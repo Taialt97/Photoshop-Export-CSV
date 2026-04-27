@@ -427,6 +427,8 @@ var layerCount = 0;
 var visibleLayerCount = 0;
 var selectedLayerCount = 0;
 var csvManifestData = [];
+// Folder names/paths to skip during export, populated from "ignore_folders" CSV directive.
+var csvIgnoredFolders = [];
 // Parallel to ddCsvTargetGroup items (index 0 = All Layers => "")
 var csvTargetGroupPaths = [];
 // When true: same as checking "Write CSV debug log" in the dialog (no UI needed for devs).
@@ -668,9 +670,12 @@ function exportLayers(exportLayerTarget, progressBarWindow) {
             var layer = layersToExport[i].layer;
 
             // Ignore layers that have are prefixed with ignoreLayersString
-            if (prefs.ignoreLayers 
-                && prefs.ignoreLayersString.length > 0 
+            if (prefs.ignoreLayers
+                && prefs.ignoreLayersString.length > 0
                 && layer.name.indexOf(prefs.ignoreLayersString) === 0) continue;
+
+            // Ignore layers inside folders listed in the CSV ignore_folders directive
+            if (layerIsInIgnoredFolder(layersToExport[i], csvIgnoredFolders)) continue;
 
             var fileName;
             switch (prefs.nameFiles) {
@@ -808,6 +813,9 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
             && prefs.ignoreLayersString.length > 0
             && layer.name.indexOf(prefs.ignoreLayersString) === 0) { continue; }
 
+        // Ignore layers inside folders listed in the CSV ignore_folders directive
+        if (layerIsInIgnoredFolder(layerEntry, csvIgnoredFolders)) { continue; }
+
         storeHistory();
         makeVisible(layerEntry);
 
@@ -889,6 +897,56 @@ function layerBelongsToGroup(layerEntry, targetGroup) {
     while (parent) {
         if (parent.layer === targetGroup.layer) { return true; }
         parent = parent.parent;
+    }
+    return false;
+}
+
+// Returns true if the layer's ancestor chain contains any folder in ignoredFolders.
+// Simple names (no slash) match by folder name at any depth.
+// Paths with slashes (e.g. "Parent/Child") match exactly against the full ancestor path.
+function layerIsInIgnoredFolder(layerEntry, ignoredFolders) {
+    if (!ignoredFolders || ignoredFolders.length === 0) { return false; }
+    var parentChain = [];
+    var p = layerEntry.parent;
+    while (p) {
+        parentChain.unshift(p.layer.name);
+        p = p.parent;
+    }
+    if (parentChain.length === 0) { return false; }
+    for (var fi = 0; fi < ignoredFolders.length; fi++) {
+        var ignored = ignoredFolders[fi];
+        if (ignored.indexOf("/") === -1) {
+            for (var ni = 0; ni < parentChain.length; ni++) {
+                if (parentChain[ni] === ignored) { return true; }
+            }
+        } else {
+            var pathSoFar = "";
+            for (var pi = 0; pi < parentChain.length; pi++) {
+                pathSoFar = pathSoFar ? (pathSoFar + "/" + parentChain[pi]) : parentChain[pi];
+                if (pathSoFar === ignored) { return true; }
+            }
+        }
+    }
+    return false;
+}
+
+// Returns true if this layerSet itself should be skipped (used during counting).
+function layerSetIsIgnored(layerSet) {
+    if (csvIgnoredFolders.length === 0) { return false; }
+    var nameParts = [layerSet.name];
+    var p = layerSet.parent;
+    while (p && p.typename === "LayerSet") {
+        nameParts.unshift(p.name);
+        p = p.parent;
+    }
+    var fullPath = nameParts.join("/");
+    for (var fi = 0; fi < csvIgnoredFolders.length; fi++) {
+        var ignored = csvIgnoredFolders[fi];
+        if (ignored.indexOf("/") === -1) {
+            if (layerSet.name === ignored) { return true; }
+        } else {
+            if (fullPath === ignored) { return true; }
+        }
     }
     return false;
 }
@@ -996,6 +1054,7 @@ function csvManifestDebugLog(location, message, n1, n2, n3) {
 // #endregion
 
 function countExportableInLayerSet(layerSet, parentGroupsVisible) {
+    if (layerSetIsIgnored(layerSet)) { return 0; }
     var groupVisibleChain = prefs.visibleOnly ? (parentGroupsVisible && layerSet.visible) : true;
     var c = 0;
     for (var i = 0; i < layerSet.artLayers.length; i++) {
@@ -1124,6 +1183,7 @@ function csvTrim(str) {
 
 function parseCsvFile(filePath) {
     var result = [];
+    csvIgnoredFolders = [];
     var f = new File(filePath);
     if (!f.exists) {
         alert("CSV file not found:\n" + filePath, "CSV Error", true);
@@ -1137,6 +1197,16 @@ function parseCsvFile(filePath) {
             if (csvTrim(line).length === 0) { continue; }
 
             var parts = line.split(",");
+
+            // Directive: ignore_folders,FolderA,FolderB/Sub,...
+            if (csvTrim(parts[0]).toLowerCase() === "ignore_folders") {
+                for (var di = 1; di < parts.length; di++) {
+                    var folderName = csvTrim(parts[di]);
+                    if (folderName.length > 0) { csvIgnoredFolders.push(folderName); }
+                }
+                continue;
+            }
+
             if (parts.length < 4) { continue; }
 
             var col0 = csvTrim(parts[0]);
@@ -1952,6 +2022,7 @@ function showDialog() {
             prefs.csvFilePath = "";
             prefs.csvTargetGroupName = "";
             csvManifestData = [];
+            csvIgnoredFolders = [];
         }
 
         // Preserve CSV runtime prefs before finalizeSettingsPrerun wipes prefs

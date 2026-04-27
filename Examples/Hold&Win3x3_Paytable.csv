@@ -1,0 +1,30 @@
+# Column,Required,Description
+# Width,Yes,Output canvas width in pixels
+# Height,Yes,Output canvas height in pixels
+# Padding,Yes,Padding in pixels applied around the layer content
+# Filename,Yes,Output filename without extension
+# Mode,No,fit (default) or canvas - see Mode Values below
+# Mode Values:
+#   fit    - Scales the layer to fit inside the canvas minus padding
+#   canvas - Resizes the canvas to Width x Height without scaling the layer
+
+Width,Height,Padding,Filename,Mode
+277,272,0,page_0,fit
+280,280,0,page_1,fit
+598,352,0,page_2,fit
+423,273,0,page_3,fit
+293,290,0,page_4,fit
+588,145,0,page_5,fit
+231,331,0,page_5_port,fit
+166,168,0,symbol_1,fit
+166,168,0,symbol_2,fit
+166,168,0,symbol_3,fit
+166,168,0,symbol_4,fit
+166,168,0,symbol_5,fit
+166,168,0,symbol_6,fit
+166,168,0,symbol_7,fit
+166,168,0,symbol_8,fit
+166,168,0,symbol_9,fit
+166,168,0,symbol_10,fit
+166,168,0,symbol_11,fit
+166,168,0,symbol_12,fit

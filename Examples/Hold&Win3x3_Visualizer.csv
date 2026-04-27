@@ -1,0 +1,30 @@
+# Column,Required,Description
+# Width,Yes,Output canvas width in pixels
+# Height,Yes,Output canvas height in pixels
+# Padding,Yes,Padding in pixels applied around the layer content
+# Filename,Yes,Output filename without extension
+# Mode,No,fit (default) or canvas - see Mode Values below
+# Mode Values:
+#   fit    - Scales the layer to fit inside the canvas minus padding
+#   canvas - Resizes the canvas to Width x Height without scaling the layer
+
+ignore_folders,Symbols/Paytable Bonus Game,Symbols/Paytables Coin Explotion,Symbols/Paytables Grid
+
+Width,Height,Padding,Filename,Mode
+160,160,0,8,fit
+160,160,0,14,fit
+160,160,0,9,fit
+160,160,0,0,fit
+160,160,0,1,fit
+160,160,0,2,fit
+160,160,0,3,fit
+160,160,0,4,fit
+160,160,0,5,fit
+160,160,0,6,fit
+160,160,0,7,fit
+160,160,0,13,fit
+160,160,0,12,fit
+160,160,0,11,fit
+160,160,0,10,fit
+
+
