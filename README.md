@@ -4,7 +4,7 @@ A Photoshop script that exports layers to image files driven by a **CSV manifest
 
 > Forked from [**antipalindrome / Photoshop-Export-Layers-to-Files-Fast**](https://github.com/antipalindrome/Photoshop-Export-Layers-to-Files-Fast). All the upstream features still work; this fork wraps a CSV-focused dialog around them.
 
-![Dialog](example.png)
+![](example.png)
 
 ## Install
 
