@@ -427,16 +427,25 @@ var layerCount = 0;
 var visibleLayerCount = 0;
 var selectedLayerCount = 0;
 var csvManifestData = [];
-// Folder names/paths to skip during export, populated from "ignore_folders" CSV directive.
-var csvIgnoredFolders = [];
 // Parallel to ddCsvTargetGroup items (index 0 = All Layers => "")
 var csvTargetGroupPaths = [];
-// When true: same as checking "Write CSV debug log" in the dialog (no UI needed for devs).
-var DEBUG_CSV_MANIFEST = false;
 // Set by the Manifest panel checkbox while the dialog is open.
 var csvManifestDebugEnabled = false;
+
+// =====================================================================
+// UI Visibility Toggles — flip these to show/hide controls in the dialog
+// =====================================================================
 // When true: single visible CSV panel, legacy controls in a hidden group, native window close, no footer.
 var CSV_FOCUSED_UI = true;
+// When true: same as checking "Write CSV debug log" in the dialog (no UI needed for devs).
+var DEBUG_CSV_MANIFEST = false;
+// When true: show the "Visible Only" checkbox in the bottom action area.
+var SHOW_VISIBLE_ONLY = true;
+// When true: show the "Write CSV debug log" checkbox in the Manifest panel.
+var SHOW_CSV_DEBUG_CHECKBOX = false;
+// When true: Target Folder dropdown defaults to showing nested groups recursively.
+// When false: dropdown shows only top-level groups; user can tick "Show all groups" to expand.
+var TARGET_FOLDER_DEFAULT_NESTED = false;
 
 //
 // Entry point
@@ -670,12 +679,9 @@ function exportLayers(exportLayerTarget, progressBarWindow) {
             var layer = layersToExport[i].layer;
 
             // Ignore layers that have are prefixed with ignoreLayersString
-            if (prefs.ignoreLayers
-                && prefs.ignoreLayersString.length > 0
+            if (prefs.ignoreLayers 
+                && prefs.ignoreLayersString.length > 0 
                 && layer.name.indexOf(prefs.ignoreLayersString) === 0) continue;
-
-            // Ignore layers inside folders listed in the CSV ignore_folders directive
-            if (layerIsInIgnoredFolder(layersToExport[i], csvIgnoredFolders)) continue;
 
             var fileName;
             switch (prefs.nameFiles) {
@@ -813,9 +819,6 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
             && prefs.ignoreLayersString.length > 0
             && layer.name.indexOf(prefs.ignoreLayersString) === 0) { continue; }
 
-        // Ignore layers inside folders listed in the CSV ignore_folders directive
-        if (layerIsInIgnoredFolder(layerEntry, csvIgnoredFolders)) { continue; }
-
         storeHistory();
         makeVisible(layerEntry);
 
@@ -897,56 +900,6 @@ function layerBelongsToGroup(layerEntry, targetGroup) {
     while (parent) {
         if (parent.layer === targetGroup.layer) { return true; }
         parent = parent.parent;
-    }
-    return false;
-}
-
-// Returns true if the layer's ancestor chain contains any folder in ignoredFolders.
-// Simple names (no slash) match by folder name at any depth.
-// Paths with slashes (e.g. "Parent/Child") match exactly against the full ancestor path.
-function layerIsInIgnoredFolder(layerEntry, ignoredFolders) {
-    if (!ignoredFolders || ignoredFolders.length === 0) { return false; }
-    var parentChain = [];
-    var p = layerEntry.parent;
-    while (p) {
-        parentChain.unshift(p.layer.name);
-        p = p.parent;
-    }
-    if (parentChain.length === 0) { return false; }
-    for (var fi = 0; fi < ignoredFolders.length; fi++) {
-        var ignored = ignoredFolders[fi];
-        if (ignored.indexOf("/") === -1) {
-            for (var ni = 0; ni < parentChain.length; ni++) {
-                if (parentChain[ni] === ignored) { return true; }
-            }
-        } else {
-            var pathSoFar = "";
-            for (var pi = 0; pi < parentChain.length; pi++) {
-                pathSoFar = pathSoFar ? (pathSoFar + "/" + parentChain[pi]) : parentChain[pi];
-                if (pathSoFar === ignored) { return true; }
-            }
-        }
-    }
-    return false;
-}
-
-// Returns true if this layerSet itself should be skipped (used during counting).
-function layerSetIsIgnored(layerSet) {
-    if (csvIgnoredFolders.length === 0) { return false; }
-    var nameParts = [layerSet.name];
-    var p = layerSet.parent;
-    while (p && p.typename === "LayerSet") {
-        nameParts.unshift(p.name);
-        p = p.parent;
-    }
-    var fullPath = nameParts.join("/");
-    for (var fi = 0; fi < csvIgnoredFolders.length; fi++) {
-        var ignored = csvIgnoredFolders[fi];
-        if (ignored.indexOf("/") === -1) {
-            if (layerSet.name === ignored) { return true; }
-        } else {
-            if (fullPath === ignored) { return true; }
-        }
     }
     return false;
 }
@@ -1054,7 +1007,6 @@ function csvManifestDebugLog(location, message, n1, n2, n3) {
 // #endregion
 
 function countExportableInLayerSet(layerSet, parentGroupsVisible) {
-    if (layerSetIsIgnored(layerSet)) { return 0; }
     var groupVisibleChain = prefs.visibleOnly ? (parentGroupsVisible && layerSet.visible) : true;
     var c = 0;
     for (var i = 0; i < layerSet.artLayers.length; i++) {
@@ -1183,7 +1135,6 @@ function csvTrim(str) {
 
 function parseCsvFile(filePath) {
     var result = [];
-    csvIgnoredFolders = [];
     var f = new File(filePath);
     if (!f.exists) {
         alert("CSV file not found:\n" + filePath, "CSV Error", true);
@@ -1197,16 +1148,6 @@ function parseCsvFile(filePath) {
             if (csvTrim(line).length === 0) { continue; }
 
             var parts = line.split(",");
-
-            // Directive: ignore_folders,FolderA,FolderB/Sub,...
-            if (csvTrim(parts[0]).toLowerCase() === "ignore_folders") {
-                for (var di = 1; di < parts.length; di++) {
-                    var folderName = csvTrim(parts[di]);
-                    if (folderName.length > 0) { csvIgnoredFolders.push(folderName); }
-                }
-                continue;
-            }
-
             if (parts.length < 4) { continue; }
 
             var col0 = csvTrim(parts[0]);
@@ -1891,6 +1832,10 @@ function repaintProgressBar(win, force /* = false*/ ) {
     }
 }
 
+function getActiveDocFolder() {
+    try { return app.activeDocument.path; } catch (e) { return null; }
+}
+
 function showDialog() {
     // Build dialog
     var dialog;
@@ -1903,12 +1848,19 @@ function showDialog() {
 
     var fields = getDialogFields(dialog);
 
+    // If the visible top-area checkbox exists, make it the canonical cbVisibleOnly
+    // so all existing reads/writes of fields.cbVisibleOnly drive the visible control.
+    if (SHOW_VISIBLE_ONLY && fields.cbVisibleOnlyTop) {
+        fields.cbVisibleOnly = fields.cbVisibleOnlyTop;
+    }
+
     // ===================
     // DESTINATION SECTION
     // ===================
     fields.txtDestination.text = prefs.destination;
     fields.btnBrowse.onClick = function() {
-        var newFilePath = Folder.selectDialog("Select destination folder", prefs.destination);
+        var startFolder = getActiveDocFolder() || prefs.destination;
+        var newFilePath = Folder.selectDialog("Select destination folder", startFolder);
         if (newFilePath) {
             fields.txtDestination.text = newFilePath.fsName;
         }
@@ -2022,7 +1974,6 @@ function showDialog() {
             prefs.csvFilePath = "";
             prefs.csvTargetGroupName = "";
             csvManifestData = [];
-            csvIgnoredFolders = [];
         }
 
         // Preserve CSV runtime prefs before finalizeSettingsPrerun wipes prefs
@@ -2163,37 +2114,46 @@ function showDialog() {
     csvManifestDebugEnabled = false;
     fields.txtCsvPath.text = "";
 
-    // Populate the target group dropdown from the live document's layer sets (recursive).
-    // (The script's `groups` array is not yet built at dialog time.)
-    csvTargetGroupPaths = [""];
-    fields.ddCsvTargetGroup.removeAll();
-    fields.ddCsvTargetGroup.add("item", "All Layers");
-    try {
-        var addGroupPathsToDropdown = function(layerSets, prefix) {
-            for (var g = 0; g < layerSets.length; g++) {
-                var pathStr = (prefix && prefix.length > 0) ? (prefix + "/" + layerSets[g].name) : layerSets[g].name;
-                csvTargetGroupPaths.push(pathStr);
-                fields.ddCsvTargetGroup.add("item", pathStr);
-                if (layerSets[g].layerSets.length > 0) {
-                    addGroupPathsToDropdown(layerSets[g].layerSets, pathStr);
+    // Populate the target group dropdown from the live document's layer sets.
+    // When "Show all groups" is checked, recurse into nested groups; otherwise top-level only.
+    var populateCsvTargetDropdown = function(includeNested) {
+        csvTargetGroupPaths = [""];
+        fields.ddCsvTargetGroup.removeAll();
+        fields.ddCsvTargetGroup.add("item", "All Layers");
+        try {
+            var addGroupPathsToDropdown = function(layerSets, prefix) {
+                for (var g = 0; g < layerSets.length; g++) {
+                    var pathStr = (prefix && prefix.length > 0) ? (prefix + "/" + layerSets[g].name) : layerSets[g].name;
+                    csvTargetGroupPaths.push(pathStr);
+                    fields.ddCsvTargetGroup.add("item", pathStr);
+                    if (includeNested && layerSets[g].layerSets.length > 0) {
+                        addGroupPathsToDropdown(layerSets[g].layerSets, pathStr);
+                    }
+                }
+            };
+            addGroupPathsToDropdown(app.activeDocument.layerSets, "");
+        } catch (e) { /* no layer sets */ }
+        fields.ddCsvTargetGroup.selection = 0;
+        if (prefs.csvTargetGroupName && prefs.csvTargetGroupName.length > 0) {
+            var ddTgRestore = fields.ddCsvTargetGroup;
+            for (var tgi = 0; tgi < csvTargetGroupPaths.length && tgi < ddTgRestore.items.length; tgi++) {
+                if (csvTargetGroupPaths[tgi] === prefs.csvTargetGroupName) {
+                    ddTgRestore.selection = tgi;
+                    break;
                 }
             }
-        };
-        addGroupPathsToDropdown(app.activeDocument.layerSets, "");
-    } catch (e) { /* no layer sets */ }
-    fields.ddCsvTargetGroup.selection = 0;
-    if (prefs.csvTargetGroupName && prefs.csvTargetGroupName.length > 0) {
-        var ddTgRestore = fields.ddCsvTargetGroup;
-        for (var tgi = 0; tgi < csvTargetGroupPaths.length && tgi < ddTgRestore.items.length; tgi++) {
-            if (csvTargetGroupPaths[tgi] === prefs.csvTargetGroupName) {
-                ddTgRestore.selection = tgi;
-                break;
-            }
         }
+    };
+    populateCsvTargetDropdown(fields.cbCsvTargetShowAll ? fields.cbCsvTargetShowAll.value : TARGET_FOLDER_DEFAULT_NESTED);
+    if (fields.cbCsvTargetShowAll) {
+        fields.cbCsvTargetShowAll.onClick = function() {
+            populateCsvTargetDropdown(this.value);
+        };
     }
 
     if (CSV_FOCUSED_UI) {
         fields.ddCsvTargetGroup.enabled = true;
+        if (fields.cbCsvTargetShowAll) fields.cbCsvTargetShowAll.enabled = true;
         fields.txtCsvPath.enabled = true;
         fields.btnBrowseCsv.enabled = true;
         fields.cbFlattenFolders.enabled = true;
@@ -2206,6 +2166,7 @@ function showDialog() {
         fields.ddNameAs.enabled = false;
     } else {
         fields.ddCsvTargetGroup.enabled = false;
+        if (fields.cbCsvTargetShowAll) fields.cbCsvTargetShowAll.enabled = false;
         fields.txtCsvPath.enabled = false;
         fields.btnBrowseCsv.enabled = false;
         fields.cbFlattenFolders.enabled = false;
@@ -2215,6 +2176,7 @@ function showDialog() {
         fields.cbCsvEnabled.onClick = function() {
             var on = this.value;
             fields.ddCsvTargetGroup.enabled = on;
+            if (fields.cbCsvTargetShowAll) fields.cbCsvTargetShowAll.enabled = on;
             fields.txtCsvPath.enabled = on;
             fields.btnBrowseCsv.enabled = on;
             fields.cbFlattenFolders.enabled = on;
@@ -2234,7 +2196,9 @@ function showDialog() {
     };
 
     fields.btnBrowseCsv.onClick = function() {
-        var csvFile = File.openDialog("Select CSV manifest file", "CSV Files:*.csv,All Files:*.*");
+        var startFolder = getActiveDocFolder();
+        var seed = startFolder ? new File(startFolder.fsName + "/dummy.csv") : new File();
+        var csvFile = seed.openDlg("Select CSV manifest file", "CSV Files:*.csv,All Files:*.*");
         if (csvFile) {
             fields.txtCsvPath.text = csvFile.fsName;
         }
@@ -3419,6 +3383,7 @@ function getDialogFields(dialog) {
         radioAll: dialog.findElement("radioAll"),
         radioSelected: dialog.findElement("radioSelected"),
         cbVisibleOnly: dialog.findElement("cbVisibleOnly"),
+        cbVisibleOnlyTop: dialog.findElement("cbVisibleOnlyTop"),
         cbIgnorePrefix: dialog.findElement("cbIgnorePrefix"),
         txtIgnorePrefix: dialog.findElement("txtIgnorePrefix"),
 
@@ -3518,6 +3483,7 @@ function getDialogFields(dialog) {
 
         cbCsvEnabled: dialog.findElement("cbCsvEnabled"),
         ddCsvTargetGroup: dialog.findElement("ddCsvTargetGroup"),
+        cbCsvTargetShowAll: dialog.findElement("cbCsvTargetShowAll"),
         txtCsvPath: dialog.findElement("txtCsvPath"),
         btnBrowseCsv: dialog.findElement("btnBrowseCsv"),
         cbFlattenFolders: dialog.findElement("cbFlattenFolders"),
@@ -3597,20 +3563,6 @@ function makeMainDialog() {
     }
 
     var formatActionsParent = CSV_FOCUSED_UI ? pnlCsvExport : pnlDestination;
-
-    var grpDestPath = formatActionsParent.add("group", undefined, {name: "grpDestPath"});
-    grpDestPath.orientation = "row";
-    grpDestPath.alignChildren = ["left", "center"];
-    grpDestPath.spacing = 10;
-    grpDestPath.margins = 0;
-
-    var txtDestination = grpDestPath.add('edittext {properties: {name: "txtDestination"}}');
-    txtDestination.helpTip = "Where to save the files";
-    txtDestination.preferredSize.width = 200;
-
-    var btnBrowse = grpDestPath.add("button", undefined, undefined, {name: "btnBrowse"});
-    btnBrowse.text = "Browse...";
-    btnBrowse.justify = "left";
 
     // PNLEXPORT
     // =========
@@ -4427,10 +4379,16 @@ function makeMainDialog() {
     var lblCsvTarget = grpCsvTarget.add("statictext", undefined, "Target Folder:");
     var ddCsvTargetGroup = grpCsvTarget.add("dropdownlist", undefined, ["All Layers"], {name: "ddCsvTargetGroup"});
     ddCsvTargetGroup.selection = 0;
-    ddCsvTargetGroup.preferredSize.width = 280;
+    ddCsvTargetGroup.preferredSize.width = 220;
+
+    var cbCsvTargetShowAll = grpCsvTarget.add("checkbox", undefined, undefined, {name: "cbCsvTargetShowAll"});
+    cbCsvTargetShowAll.text = "Show all groups";
+    cbCsvTargetShowAll.helpTip = "When unchecked, only top-level groups are listed. When checked, every nested group is shown.";
+    cbCsvTargetShowAll.value = TARGET_FOLDER_DEFAULT_NESTED;
 
     // GRPCSVFILE
     // ==========
+    var lblCsvFile = pnlManifest.add("statictext", undefined, "CSV Manifest File:", {name: "lblCsvFile"});
     var grpCsvFile = pnlManifest.add("group", undefined, {name: "grpCsvFile"});
     grpCsvFile.orientation = "row";
     grpCsvFile.alignChildren = ["left", "center"];
@@ -4447,11 +4405,55 @@ function makeMainDialog() {
     var cbFlattenFolders = pnlManifest.add("checkbox", undefined, undefined, {name: "cbFlattenFolders"});
     cbFlattenFolders.text = "Flatten Nested Folders";
 
-    var cbCsvManifestDebug = pnlManifest.add("checkbox", undefined, undefined, {name: "cbCsvManifestDebug"});
+    var _csvDebugParent;
+    if (SHOW_CSV_DEBUG_CHECKBOX) {
+        _csvDebugParent = pnlManifest;
+    } else {
+        _csvDebugParent = pnlManifest.add("group", undefined, {name: "grpCsvDebugHide"});
+        _csvDebugParent.visible = false;
+        _csvDebugParent.preferredSize = [0, 0];
+        _csvDebugParent.maximumSize = [0, 0];
+    }
+    var cbCsvManifestDebug = _csvDebugParent.add("checkbox", undefined, undefined, {name: "cbCsvManifestDebug"});
     cbCsvManifestDebug.text = "Write CSV debug log (Desktop: ExportLayersCSV-debug.log)";
 
     var btnReviewManifest = pnlManifest.add("button", undefined, undefined, {name: "btnReviewManifest"});
     btnReviewManifest.text = "Review/Edit Manifest";
+
+    // GRPTOPOPTIONS (Visible Only + Overwrite, on one row above destination)
+    // =============
+    var grpTopOptions = formatActionsParent.add("group", undefined, {name: "grpTopOptions"});
+    grpTopOptions.orientation = "row";
+    grpTopOptions.alignChildren = ["left", "center"];
+    grpTopOptions.spacing = 14;
+    grpTopOptions.margins = [0, 4, 0, 0];
+
+    if (SHOW_VISIBLE_ONLY) {
+        var cbVisibleOnlyTop = grpTopOptions.add("checkbox", undefined, undefined, {name: "cbVisibleOnlyTop"});
+        cbVisibleOnlyTop.helpTip = "Whether to export only visible layers";
+        cbVisibleOnlyTop.text = "Visible Only";
+    }
+
+    var cbOverwriteFiles = grpTopOptions.add("checkbox", undefined, undefined, {name: "cbOverwriteFiles"});
+    cbOverwriteFiles.helpTip = "If checked, will overwrite existing files if they have the same name. Otherwise it will make unique copies";
+    cbOverwriteFiles.text = "Overwrite Existing Files";
+
+    // GRPDESTPATH (moved from top of destination panel)
+    // ===========
+    var lblDestPath = formatActionsParent.add("statictext", undefined, "Export Location:", {name: "lblDestPath"});
+    var grpDestPath = formatActionsParent.add("group", undefined, {name: "grpDestPath"});
+    grpDestPath.orientation = "row";
+    grpDestPath.alignChildren = ["left", "center"];
+    grpDestPath.spacing = 10;
+    grpDestPath.margins = 0;
+
+    var txtDestination = grpDestPath.add('edittext {properties: {name: "txtDestination"}}');
+    txtDestination.helpTip = "Where to save the files";
+    txtDestination.preferredSize.width = 200;
+
+    var btnBrowse = grpDestPath.add("button", undefined, undefined, {name: "btnBrowse"});
+    btnBrowse.text = "Browse...";
+    btnBrowse.justify = "left";
 
     // GRPACTIONS (under manifest + format tabs)
     // ==========
@@ -4484,11 +4486,6 @@ function makeMainDialog() {
         btnSaveAndCancel.helpTip = "Closes the dialog but saves any changes made";
         btnSaveAndCancel.text = "Save and Close";
     }
-
-    var cbOverwriteFiles = grpActions.add("checkbox", undefined, undefined, {name: "cbOverwriteFiles"});
-    cbOverwriteFiles.helpTip = "If checked, will overwrite existing files if they have the same name. Otherwise it will make unique copies";
-    cbOverwriteFiles.text = "Overwrite Existing Files";
-    cbOverwriteFiles.alignment = ["center", "top"];
 
     var cbSilent = grpActions.add("checkbox", undefined, undefined, {name: "cbSilent"});
     cbSilent.helpTip = "If checked, export runs without a progress bar or success confirmation.";
