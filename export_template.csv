@@ -20,6 +20,8 @@
 # Filename — output filename without extension.
 #            Use subfolder/name to place the file in a subfolder
 #            (the folder is created automatically).
+#            Wrap the field in double quotes if the name itself
+#            contains a comma: "name, with comma"
 # Mode    — optional, defaults to "fit"
 #            fit    : scale the layer to fill the canvas (minus padding)
 #            canvas : set canvas to W×H without scaling the layer content

@@ -2,7 +2,7 @@
 //  Export Layers To Files
 
 // VERSION:
-// v2.7.1
+// v1.0.0 (CSV Manifest fork — based on antipalindrome upstream v2.7.1)
 
 // REQUIRES:
 //  Adobe Photoshop CS2 or higher
@@ -447,6 +447,9 @@ var SHOW_CSV_DEBUG_CHECKBOX = false;
 // When false: dropdown shows only top-level groups; user can tick "Show all groups" to expand.
 var TARGET_FOLDER_DEFAULT_NESTED = false;
 
+// Upper bound when disambiguating colliding file/folder names with -001, -002, ...
+var MAX_COLLISION_ATTEMPTS = 100;
+
 //
 // Entry point
 //
@@ -678,10 +681,8 @@ function exportLayers(exportLayerTarget, progressBarWindow) {
         for (var i = (prefs.exportForeground ? 1 : 0); i < count; ++i) {
             var layer = layersToExport[i].layer;
 
-            // Ignore layers that have are prefixed with ignoreLayersString
-            if (prefs.ignoreLayers 
-                && prefs.ignoreLayersString.length > 0 
-                && layer.name.indexOf(prefs.ignoreLayersString) === 0) continue;
+            // Ignore layers that are prefixed with ignoreLayersString
+            if (isIgnoredLayer(layer)) continue;
 
             var fileName;
             switch (prefs.nameFiles) {
@@ -718,7 +719,7 @@ function exportLayers(exportLayerTarget, progressBarWindow) {
                         try {
                             doc.crop(layer.bounds);
                         } catch (e) {
-                            useTrim = true;
+                            // Crop can fail on empty layers; exporting uncropped is the fallback.
                         }
                     }
                     if (prefs.trimValue == TrimPrefType.INDIVIDUAL_USE_TRIM) {
@@ -740,8 +741,11 @@ function exportLayers(exportLayerTarget, progressBarWindow) {
                         if (prefs.padding)
                             addPadding();
 
-                        saveImage(fileName);
-                        ++retVal.count;
+                        if (saveImage(fileName)) {
+                            ++retVal.count;
+                        } else {
+                            retVal.error = true;
+                        }
                     }
 
                     if (prefs.trimValue == TrimPrefType.INDIVIDUAL || folderSafe) {
@@ -783,20 +787,27 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
     if (prefs.csvTargetGroupName && prefs.csvTargetGroupName.length > 0 && groups) {
         var wantPath = prefs.csvTargetGroupName;
         var targetGroup = findScriptGroupByPath(groups, wantPath);
-        if (targetGroup) {
-            filteredLayers = [];
-            for (var f = startIdx; f < count; f++) {
-                var entry = layersToExport[f];
-                if (layerBelongsToGroup(entry, targetGroup)) {
-                    filteredLayers.push(entry);
-                }
-            }
-            count = filteredLayers.length;
-            startIdx = 0;
-            csvManifestDebugLog("exportLayersWithManifest", "targetGroup OK", wantPath, filteredLayers.length, layersToExport.length);
-        } else {
+        if (!targetGroup) {
             csvManifestDebugLog("exportLayersWithManifest", "targetGroup NOT FOUND", wantPath, layersToExport.length, count);
+            alert(
+                "Export aborted: target folder \"" + wantPath + "\" was not found in the document.\n\n" +
+                "It may have been renamed or deleted. Re-open the dialog and pick the target folder again.",
+                "CSV Target Folder",
+                true
+            );
+            app.displayDialogs = savedDialogMode;
+            return;
         }
+        filteredLayers = [];
+        for (var f = startIdx; f < count; f++) {
+            var entry = layersToExport[f];
+            if (layerBelongsToGroup(entry, targetGroup)) {
+                filteredLayers.push(entry);
+            }
+        }
+        count = filteredLayers.length;
+        startIdx = 0;
+        csvManifestDebugLog("exportLayersWithManifest", "targetGroup OK", wantPath, filteredLayers.length, layersToExport.length);
     }
 
     if (csvManifestData && csvManifestData.length !== (count - startIdx)) {
@@ -805,7 +816,8 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
             (count - startIdx) + " layers will be exported.\n\n" +
             "Possible causes:\n" +
             "  - Adjustment layers are excluded from export\n" +
-            "  - A target group filter reduced the layer count\n\n" +
+            "  - A target group filter reduced the layer count\n" +
+            "  - Malformed CSV rows were skipped (a warning listed them when the file was loaded)\n\n" +
             "Please update your CSV to " + (count - startIdx) + " entries and try again.",
             "CSV Count Mismatch",
             true
@@ -825,100 +837,170 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
     } catch (e) { /* no background layer */ }
 
     var csvIdx = 0;
-    for (var i = startIdx; i < count; i++) {
-        var layerEntry = filteredLayers[i];
-        var layer = layerEntry.layer;
+    var failures = [];
+    var warnings = [];
+    try {
+        for (var i = startIdx; i < count; i++) {
+            var layerEntry = filteredLayers[i];
+            var layer = layerEntry.layer;
 
-        // Ignore layers with the ignore prefix
-        if (prefs.ignoreLayers
-            && prefs.ignoreLayersString.length > 0
-            && layer.name.indexOf(prefs.ignoreLayersString) === 0) { continue; }
-
-        var manifestEntry = (csvIdx < csvManifestData.length) ? csvManifestData[csvIdx] : null;
-
-        if (manifestEntry && csvTrim(manifestEntry.filename).toLowerCase() === "-ignore") {
-            layer.visible = false;
-            csvIdx++;
-            continue;
-        }
-
-        storeHistory();
-        makeVisible(layerEntry);
-
-        // Always trim individual layer bounds in CSV mode so resize
-        // operates on actual content, not the full PSD canvas.
-        try { app.activeDocument.crop(layer.bounds); } catch (e) { }
-
-        if (manifestEntry && manifestEntry.width > 0 && manifestEntry.height > 0) {
-            if (manifestEntry.mode === "canvas") {
-                setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
-            } else {
-                resizeImageToFit(manifestEntry.width, manifestEntry.height, manifestEntry.padding);
-                setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
+            if (isIgnoredLayer(layer)) {
+                // The CSV row still belongs to this layer; consume it so the
+                // rows below stay aligned with their layers.
+                csvIdx++;
+                continue;
             }
 
-            var rawCsvName = manifestEntry.filename;
-            var csvSubfolder = "";
-            var slashIdx = rawCsvName.lastIndexOf("/");
-            if (slashIdx >= 0) {
-                csvSubfolder = rawCsvName.substring(0, slashIdx + 1);
-                rawCsvName   = rawCsvName.substring(slashIdx + 1);
+            var manifestEntry = (csvIdx < csvManifestData.length) ? csvManifestData[csvIdx] : null;
+
+            if (manifestEntry && csvTrim(manifestEntry.filename).toLowerCase() === "-ignore") {
+                layer.visible = false;
+                csvIdx++;
+                continue;
             }
 
-            var localFolders = "";
-            if (csvSubfolder.length > 0) {
-                var csvFolderParts = csvSubfolder.split("/");
-                for (var cfp = 0; cfp < csvFolderParts.length; cfp++) {
-                    var cfpPart = csvTrim(csvFolderParts[cfp]);
-                    if (cfpPart.length > 0) {
-                        localFolders += makeValidFileName(cfpPart, prefs.useDelimiter) + "/";
+            // An empty layer can't be cropped to its content; exporting it would
+            // silently produce a full-canvas image at the manifest size.
+            var bounds = layer.bounds;
+            if (!((bounds[0] < bounds[2]) && (bounds[1] < bounds[3]))) {
+                warnings.push("\"" + layer.name + "\": layer is empty -- skipped");
+                csvIdx++;
+                continue;
+            }
+
+            storeHistory();
+            makeVisible(layerEntry);
+
+            try {
+                // Always trim individual layer bounds in CSV mode so resize
+                // operates on actual content, not the full PSD canvas.
+                try { app.activeDocument.crop(layer.bounds); } catch (eCrop) { }
+
+                if (manifestEntry && manifestEntry.width > 0 && manifestEntry.height > 0) {
+                    if (manifestEntry.mode === "canvas") {
+                        setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
+                    } else {
+                        resizeImageToFit(manifestEntry.width, manifestEntry.height, manifestEntry.padding);
+                        setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
+                    }
+
+                    var rawCsvName = manifestEntry.filename;
+                    var csvSubfolder = "";
+                    var slashIdx = rawCsvName.lastIndexOf("/");
+                    if (slashIdx >= 0) {
+                        csvSubfolder = rawCsvName.substring(0, slashIdx + 1);
+                        rawCsvName   = rawCsvName.substring(slashIdx + 1);
+                    }
+
+                    var localFolders = "";
+                    if (csvSubfolder.length > 0) {
+                        var csvFolderParts = csvSubfolder.split("/");
+                        for (var cfp = 0; cfp < csvFolderParts.length; cfp++) {
+                            var cfpPart = csvTrim(csvFolderParts[cfp]);
+                            if (cfpPart.length > 0) {
+                                localFolders += makeValidFileName(cfpPart, prefs.useDelimiter) + "/";
+                            }
+                        }
+                    } else if (!prefs.csvFlattenFolders) {
+                        var parent = layerEntry.parent;
+                        while (parent) {
+                            localFolders = makeValidFileName(parent.layer.name, prefs.useDelimiter) + "/" + localFolders;
+                            parent = parent.parent;
+                        }
+                    }
+
+                    // Strip any file extension the user may have included in the CSV name
+                    var safeName = makeValidFileName(rawCsvName, prefs.useDelimiter);
+                    var dotIdx = safeName.lastIndexOf(".");
+                    if (dotIdx > 0) { safeName = safeName.substring(0, dotIdx); }
+                    if (safeName.length === 0) { safeName = "untitled"; }
+                    var filePath = prefs.destination + "/" + localFolders + safeName;
+
+                    var folderSafe = true;
+                    if (localFolders.length > 0) {
+                        var parentFolder = (new File(filePath + ext)).parent;
+                        folderSafe = createFolder(parentFolder);
+                    }
+
+                    if (!folderSafe) {
+                        failures.push("\"" + layer.name + "\": could not create folder \"" + localFolders + "\"");
+                        retVal.error = true;
+                    } else if (saveImage(new File(filePath + ext))) {
+                        ++retVal.count;
+                    } else {
+                        failures.push("\"" + layer.name + "\": failed to save \"" + safeName + ext + "\"");
+                        retVal.error = true;
+                    }
+                } else {
+                    // Fallback: row has no usable dimensions -- export unresized
+                    // under the layer name, avoiding collisions between duplicates.
+                    var fallbackName = makeValidFileName(layer.name, prefs.useDelimiter);
+                    if (fallbackName.length === 0) { fallbackName = "Layer"; }
+                    var fallbackHandle = makeUniqueFileHandle(prefs.destination + "/" + fallbackName, ext);
+                    warnings.push("\"" + layer.name + "\": CSV row has no dimensions -- exported unresized as \"" + fallbackHandle.name + "\"");
+                    if (saveImage(fallbackHandle)) {
+                        ++retVal.count;
+                    } else {
+                        failures.push("\"" + layer.name + "\": failed to save \"" + fallbackHandle.name + "\"");
+                        retVal.error = true;
                     }
                 }
-            } else if (!prefs.csvFlattenFolders) {
-                var parent = layerEntry.parent;
-                while (parent) {
-                    localFolders = makeValidFileName(parent.layer.name, prefs.useDelimiter) + "/" + localFolders;
-                    parent = parent.parent;
-                }
+            } catch (e) {
+                failures.push("\"" + layer.name + "\": " + e.message);
+                retVal.error = true;
             }
 
-            // Strip any file extension the user may have included in the CSV name
-            var safeName = makeValidFileName(rawCsvName, prefs.useDelimiter);
-            var dotIdx = safeName.lastIndexOf(".");
-            if (dotIdx > 0) { safeName = safeName.substring(0, dotIdx); }
-            if (safeName.length === 0) { safeName = "untitled"; }
-            var filePath = prefs.destination + "/" + localFolders + safeName;
+            csvIdx++;
+            restoreHistory();
+            layer.visible = false;
 
-            if (localFolders.length > 0) {
-                var parentFolder = (new File(filePath + ext)).parent;
-                createFolder(parentFolder);
+            // Cancellation can only be detected while the progress bar pumps UI events.
+            if (progressBarWindow) {
+                updateProgressBar(progressBarWindow, "Exporting " + (i + 1) + " of " + count + "...");
+                repaintProgressBar(progressBarWindow);
+                if (userCancelled) { break; }
             }
-
-            var fileHandle = new File(filePath + ext);
-            saveImage(fileHandle);
-            ++retVal.count;
-        } else {
-            // Fallback: no matching CSV entry -- use original layer name, skip resizing
-            var fallbackName = makeValidFileName(layer.name, prefs.useDelimiter);
-            if (fallbackName.length === 0) { fallbackName = "Layer"; }
-            var fallbackPath = prefs.destination + "/" + fallbackName;
-            var fallbackHandle = new File(fallbackPath + ext);
-            saveImage(fallbackHandle);
-            ++retVal.count;
         }
-
-        csvIdx++;
-        restoreHistory();
-        layer.visible = false;
-
-        if (progressBarWindow) {
-            updateProgressBar(progressBarWindow, "Exporting " + (i + 1) + " of " + count + "...");
-            repaintProgressBar(progressBarWindow);
-            if (userCancelled) { break; }
-        }
+    } finally {
+        app.displayDialogs = savedDialogMode;
     }
 
-    app.displayDialogs = savedDialogMode;
+    if (failures.length > 0 || warnings.length > 0) {
+        var maxNotes = 10;
+        var notes = failures.concat(warnings);
+        var noteLines = notes.slice(0, maxNotes).join("\n");
+        if (notes.length > maxNotes) {
+            noteLines += "\n...and " + (notes.length - maxNotes) + " more";
+        }
+        alert(
+            "Export finished: " + retVal.count + " file(s) saved, " +
+            failures.length + " error(s), " + warnings.length + " warning(s).\n\n" + noteLines,
+            "CSV Export Summary",
+            failures.length > 0
+        );
+    }
+}
+
+// Returns a File handle for basePath+ext; when the file already exists and
+// overwriting is off, appends -001, -002, ... until a free name is found.
+function makeUniqueFileHandle(basePath, ext) {
+    var handle = new File(basePath + ext);
+    if (!handle.exists || prefs.overwrite) {
+        return handle;
+    }
+    for (var n = 1; n <= MAX_COLLISION_ATTEMPTS; n++) {
+        handle = new File(basePath + "-" + padder(n, 3) + ext);
+        if (!handle.exists) {
+            return handle;
+        }
+    }
+    return new File(basePath + ext);
+}
+
+function isIgnoredLayer(layer) {
+    return prefs.ignoreLayers
+        && prefs.ignoreLayersString.length > 0
+        && layer.name.indexOf(prefs.ignoreLayersString) === 0;
 }
 
 function layerBelongsToGroup(layerEntry, targetGroup) {
@@ -948,29 +1030,6 @@ function addPadding() {
     app.activeDocument.resizeCanvas(widthUnit, heightUnit, AnchorPosition.MIDDLECENTER);
 }
 
-// Pads the document to exact targetW x targetH (centered, no resampling).
-// Returns false if content is larger than target.
-function padCanvasOnly(targetW, targetH) {
-    var doc = app.activeDocument;
-    if (isNaN(targetW) || isNaN(targetH) || targetW < 1 || targetH < 1) {
-        return false;
-    }
-    var curW = doc.width.as("px");
-    var curH = doc.height.as("px");
-    if (curW > targetW || curH > targetH) {
-        return false;
-    }
-    if (Math.round(curW) === targetW && Math.round(curH) === targetH) {
-        return true;
-    }
-    doc.resizeCanvas(
-        UnitValue(targetW, "px"),
-        UnitValue(targetH, "px"),
-        AnchorPosition.MIDDLECENTER
-    );
-    return true;
-}
-
 // =====================
 // CSV Manifest helpers
 // =====================
@@ -997,7 +1056,9 @@ function getLayerSetByPath(pathStr) {
 }
 
 // #region agent log
-// Human-readable CSV manifest diagnostics. Order: Desktop, temp, script folder, optional workspace .cursor path.
+// Human-readable CSV manifest diagnostics. Order: temp, script folder, Desktop.
+// The log is truncated on the first write of each run.
+var csvDebugLogStarted = false;
 function csvManifestDebugLog(location, message, n1, n2, n3) {
     if (!DEBUG_CSV_MANIFEST && !csvManifestDebugEnabled) {
         return;
@@ -1012,20 +1073,21 @@ function csvManifestDebugLog(location, message, n1, n2, n3) {
     } catch (eW) { }
     var paths = [];
     try {
-        paths.push(Folder.desktop.fsName + "/ExportLayersCSV-debug.log");
-    } catch (eD) { }
-    try {
         paths.push(Folder.temp.fsName + "/ExportLayersCSV-debug.log");
     } catch (eT) { }
     if (typeof env !== "undefined" && env && env.scriptFileDirectory) {
         paths.push(env.scriptFileDirectory + "/ExportLayersCSV-debug.log");
     }
+    try {
+        paths.push(Folder.desktop.fsName + "/ExportLayersCSV-debug.log");
+    } catch (eD) { }
     for (var pi = 0; pi < paths.length; pi++) {
         try {
             var lf = new File(paths[pi]);
-            lf.open("a");
+            lf.open(csvDebugLogStarted ? "a" : "w");
             lf.writeln(line);
             lf.close();
+            csvDebugLogStarted = true;
             return;
         } catch (eF) { }
     }
@@ -1159,6 +1221,38 @@ function csvTrim(str) {
     return str.replace(/^\s+/, "").replace(/\s+$/, "");
 }
 
+// Split a CSV line into fields, honoring double quotes ("" escapes a quote).
+// Unquoted commas still split; quoted commas are kept inside the field.
+function splitCsvLine(line) {
+    var fields = [];
+    var cur = "";
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+        var ch = line.charAt(i);
+        if (inQuotes) {
+            if (ch === '"') {
+                if (i + 1 < line.length && line.charAt(i + 1) === '"') {
+                    cur += '"';
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                cur += ch;
+            }
+        } else if (ch === '"') {
+            inQuotes = true;
+        } else if (ch === ",") {
+            fields.push(cur);
+            cur = "";
+        } else {
+            cur += ch;
+        }
+    }
+    fields.push(cur);
+    return fields;
+}
+
 function parseCsvFile(filePath) {
     var result = [];
     var f = new File(filePath);
@@ -1166,27 +1260,43 @@ function parseCsvFile(filePath) {
         alert("CSV file not found:\n" + filePath, "CSV Error", true);
         return result;
     }
+    var skipped = [];
     try {
         f.open("r");
-        var firstLine = true;
+        var firstDataLine = true;
+        var lineNum = 0;
         while (!f.eof) {
             var line = f.readln();
-            if (csvTrim(line).length === 0) { continue; }
+            lineNum++;
+            var trimmed = csvTrim(line);
+            if (trimmed.length === 0) { continue; }
+            if (trimmed.charAt(0) === "#") { continue; }
 
-            var parts = line.split(",");
-            if (parts.length < 4) { continue; }
-
+            var parts = splitCsvLine(line);
             var col0 = csvTrim(parts[0]);
 
-            // Auto-detect and skip a text header row
-            if (firstLine) {
-                firstLine = false;
+            // Legacy manifests may carry an "ignore_folders" row; it was never
+            // supported by the exporter, so skip it without a warning.
+            if (col0.toLowerCase() === "ignore_folders") { continue; }
+
+            if (firstDataLine) {
+                firstDataLine = false;
+                // Skip a text header row (e.g. "Width,Height,Padding,Filename,Mode").
                 if (isNaN(parseInt(col0, 10))) { continue; }
+            }
+
+            if (parts.length < 4) {
+                skipped.push("line " + lineNum + ": expected at least 4 columns, got " + parts.length);
+                continue;
             }
 
             var w = parseInt(col0, 10);
             var h = parseInt(csvTrim(parts[1]), 10);
             var p = parseInt(csvTrim(parts[2]), 10);
+            if (isNaN(w) || isNaN(h) || isNaN(p)) {
+                skipped.push("line " + lineNum + ": Width/Height/Padding must be numbers");
+                continue;
+            }
 
             // Detect optional 5th column (mode): last part is mode if it
             // matches a known keyword; otherwise it's part of the filename.
@@ -1201,13 +1311,25 @@ function parseCsvFile(filePath) {
             }
             var fn = nameParts.join(",");
 
-            if (isNaN(w) || isNaN(h) || isNaN(p)) { continue; }
             result.push({ width: w, height: h, padding: p, filename: fn, mode: mode });
         }
         f.close();
     } catch (e) {
         alert("Failed to read CSV file:\n" + e.message, "CSV Error", true);
         return [];
+    }
+    if (skipped.length > 0) {
+        var maxShown = 10;
+        var lines = skipped.slice(0, maxShown).join("\n");
+        if (skipped.length > maxShown) {
+            lines += "\n...and " + (skipped.length - maxShown) + " more";
+        }
+        alert(
+            "Skipped " + skipped.length + " malformed CSV row(s):\n\n" + lines +
+            "\n\nThese rows will NOT count toward the layer/row alignment.",
+            "CSV Warning",
+            false
+        );
     }
     return result;
 }
@@ -1285,7 +1407,7 @@ function createUniqueFolders(exportLayerTarget) {
             var folder = new Folder(path);
             if (folder.exists && !prefs.overwrite) {
                 var renamed = false;
-                for (var j = 1; j <= 100; ++j) {
+                for (var j = 1; j <= MAX_COLLISION_ATTEMPTS; ++j) {
                     var handle = new Folder(path + "-" + padder(j, 3));
                     if (!handle.exists) {
                         try {
@@ -1315,25 +1437,29 @@ function createUniqueFolders(exportLayerTarget) {
 }
 
 function saveImage(fileName) {
-    if (prefs.formatArgs instanceof ExportOptionsSaveForWeb) {
-        // Document.exportDocument() is unreliable -- it ignores some of the export options.
-        // Avoid it if possible.
-        switch (prefs.fileType) {
+    try {
+        if (prefs.formatArgs instanceof ExportOptionsSaveForWeb) {
+            // Document.exportDocument() is unreliable -- it ignores some of the export options.
+            // Avoid it if possible.
+            switch (prefs.fileType) {
 
-            case "PNG-24":
-                exportPng24AM(fileName, prefs.formatArgs);
-                break;
+                case "PNG-24":
+                    exportPng24AM(fileName, prefs.formatArgs);
+                    break;
 
-            case "PNG-8":
-                exportPng8AM(fileName, prefs.formatArgs);
-                break;
+                case "PNG-8":
+                    exportPng8AM(fileName, prefs.formatArgs);
+                    break;
 
-            default:
-                app.activeDocument.exportDocument(fileName, ExportType.SAVEFORWEB, prefs.formatArgs);
-                break;
+                default:
+                    app.activeDocument.exportDocument(fileName, ExportType.SAVEFORWEB, prefs.formatArgs);
+                    break;
+            }
+        } else {
+            app.activeDocument.saveAs(fileName, prefs.formatArgs, true, LetterCase.toExtensionType(prefs.letterCase));
         }
-    } else {
-        app.activeDocument.saveAs(fileName, prefs.formatArgs, true, LetterCase.toExtensionType(prefs.letterCase));
+    } catch (e) {
+        return false;
     }
 
     return true;
@@ -1364,7 +1490,7 @@ function getParentTree(layer, parents) {
     return parents;
 }
 
-function getFullGroupName(layer, name) {
+function getFullGroupName(layer) {
     var parents = getParentTree(layer, []);
     var name = "";
     for(var i = parents.length - 1; i >= 0; i--) {
@@ -1374,7 +1500,7 @@ function getFullGroupName(layer, name) {
 }
 
 function makeFileNameFromLayerName(layer, stripExt, withGroup, index) {
-    var layerName = withGroup ? getFullGroupName(layer.layer, "") : layer.layer.name;
+    var layerName = withGroup ? getFullGroupName(layer.layer) : layer.layer.name;
     var fileName = makeValidFileName(layerName, prefs.useDelimiter);
     if (stripExt) {
         var dotIdx = fileName.lastIndexOf('.');
@@ -1465,7 +1591,7 @@ function getUniqueFileName(fileName, layer, index) {
 
     // Check if the file already exists. In such case a numeric suffix will be added to disambiguate.
     var uniqueName = fileName;
-    for (var i = 1; i <= 100; ++i) {
+    for (var i = 1; i <= MAX_COLLISION_ATTEMPTS; ++i) {
         var handle = File(uniqueName + ext);
         if (handle.exists && !prefs.overwrite) {
             uniqueName = fileName + "-" + padder(i, 3);
@@ -2135,7 +2261,7 @@ function showDialog() {
     } else {
         fields.cbCsvEnabled.value = false;
     }
-    fields.cbFlattenFolders.value = false;
+    fields.cbFlattenFolders.value = true;
     fields.cbCsvManifestDebug.value = false;
     csvManifestDebugEnabled = false;
     fields.txtCsvPath.text = "";
