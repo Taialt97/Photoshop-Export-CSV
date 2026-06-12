@@ -1,0 +1,78 @@
+# ============================================================
+# Export Layers To Files — CSV Template
+# ============================================================
+#
+# HOW IT WORKS
+# Each row maps 1-to-1 with a Photoshop layer, top to bottom.
+# Row 1  →  topmost layer
+# Row 2  →  second layer from top
+# ...and so on.
+#
+# The script reads this file, iterates through your layers in
+# order, and applies each row's settings to the matching layer.
+# The layer count in the PSD must match the row count in the CSV.
+#
+# COLUMNS
+# Width   — output canvas width in pixels
+# Height  — output canvas height in pixels
+# Padding — empty space (px) added around the layer content
+#            before fitting. Use 0 for no padding.
+# Filename — output filename without extension.
+#            Use subfolder/name to place the file in a subfolder
+#            (the folder is created automatically).
+# Mode    — optional, defaults to "fit"
+#            fit    : scale the layer to fill the canvas (minus padding)
+#            canvas : set canvas to W×H without scaling the layer content
+#
+# SPECIAL VALUES
+# -ignore  — skips this layer entirely (no file exported).
+#            The row still counts against the layer order so all
+#            rows below it remain correctly aligned.
+#            Use 0,0,0 for the W/H/P columns (they are ignored).
+#
+# COMMENTS & BLANK LINES
+# Lines starting with # and blank lines are ignored.
+# The header row (Width,Height,Padding,Filename,Mode) is also ignored.
+#
+# ============================================================
+
+Width,Height,Padding,Filename,Mode
+
+# ---- FIT mode examples -------------------------------------
+# Layer content is scaled to fit inside (Width - Padding*2) x (Height - Padding*2).
+# Canvas is then set to exactly Width x Height.
+
+# A full-size background — no padding needed
+1920,1080,0,background,fit
+
+# A logo scaled to fit a 400×200 box with 20px breathing room on all sides
+400,200,20,logo,fit
+
+# A title banner — "fit" is the default so the Mode column can be omitted
+800,120,0,title_banner
+
+# ---- IGNORE example ----------------------------------------
+# This layer is skipped. No file is created.
+# The rows below still line up correctly with the layers below this one.
+
+0,0,0,-ignore
+
+# ---- CANVAS mode examples ----------------------------------
+# Canvas is set to exactly Width x Height.
+# The layer content is NOT scaled — it stays at its original size.
+# Use this for icons or sprites that must stay pixel-perfect.
+# If the content is larger than the target it will be cropped (centered).
+
+277,277,0,icon_star,canvas
+277,277,0,icon_coin,canvas
+
+# ---- SUBFOLDER examples ------------------------------------
+# Use subfolder/filename to organise exports into folders.
+# The folder is created automatically inside the export destination.
+# Subfolders defined here override the Photoshop group hierarchy.
+
+480,80,0,ui/button_play,fit
+480,80,0,ui/button_settings,fit
+
+# Deeper nesting is supported too
+64,64,0,hud/icons/health_bar,canvas

@@ -799,6 +799,21 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
         }
     }
 
+    if (csvManifestData && csvManifestData.length !== (count - startIdx)) {
+        alert(
+            "Export aborted: CSV has " + csvManifestData.length + " entries but " +
+            (count - startIdx) + " layers will be exported.\n\n" +
+            "Possible causes:\n" +
+            "  - Adjustment layers are excluded from export\n" +
+            "  - A target group filter reduced the layer count\n\n" +
+            "Please update your CSV to " + (count - startIdx) + " entries and try again.",
+            "CSV Count Mismatch",
+            true
+        );
+        app.displayDialogs = savedDialogMode;
+        return;
+    }
+
     // Hide every export-tracked layer so nothing outside the current target composites in.
     for (var hi = 0; hi < layers.length; hi++) {
         makeInvisible(layers[hi]);
@@ -819,6 +834,14 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
             && prefs.ignoreLayersString.length > 0
             && layer.name.indexOf(prefs.ignoreLayersString) === 0) { continue; }
 
+        var manifestEntry = (csvIdx < csvManifestData.length) ? csvManifestData[csvIdx] : null;
+
+        if (manifestEntry && csvTrim(manifestEntry.filename).toLowerCase() === "-ignore") {
+            layer.visible = false;
+            csvIdx++;
+            continue;
+        }
+
         storeHistory();
         makeVisible(layerEntry);
 
@@ -826,29 +849,32 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
         // operates on actual content, not the full PSD canvas.
         try { app.activeDocument.crop(layer.bounds); } catch (e) { }
 
-        var manifestEntry = (csvIdx < csvManifestData.length) ? csvManifestData[csvIdx] : null;
-
         if (manifestEntry && manifestEntry.width > 0 && manifestEntry.height > 0) {
-            var skipLayer = false;
             if (manifestEntry.mode === "canvas") {
-                if (!padCanvasOnly(manifestEntry.width, manifestEntry.height)) {
-                    skipLayer = true;
-                }
+                setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
             } else {
                 resizeImageToFit(manifestEntry.width, manifestEntry.height, manifestEntry.padding);
                 setCanvasToExactSize(manifestEntry.width, manifestEntry.height);
             }
 
-            if (skipLayer) {
-                restoreHistory();
-                layer.visible = false;
-                csvIdx++;
-                retVal.error = true;
-                continue;
+            var rawCsvName = manifestEntry.filename;
+            var csvSubfolder = "";
+            var slashIdx = rawCsvName.lastIndexOf("/");
+            if (slashIdx >= 0) {
+                csvSubfolder = rawCsvName.substring(0, slashIdx + 1);
+                rawCsvName   = rawCsvName.substring(slashIdx + 1);
             }
 
             var localFolders = "";
-            if (!prefs.csvFlattenFolders) {
+            if (csvSubfolder.length > 0) {
+                var csvFolderParts = csvSubfolder.split("/");
+                for (var cfp = 0; cfp < csvFolderParts.length; cfp++) {
+                    var cfpPart = csvTrim(csvFolderParts[cfp]);
+                    if (cfpPart.length > 0) {
+                        localFolders += makeValidFileName(cfpPart, prefs.useDelimiter) + "/";
+                    }
+                }
+            } else if (!prefs.csvFlattenFolders) {
                 var parent = layerEntry.parent;
                 while (parent) {
                     localFolders = makeValidFileName(parent.layer.name, prefs.useDelimiter) + "/" + localFolders;
@@ -857,7 +883,7 @@ function exportLayersWithManifest(layersToExport, count, progressBarWindow, retV
             }
 
             // Strip any file extension the user may have included in the CSV name
-            var safeName = makeValidFileName(manifestEntry.filename, prefs.useDelimiter);
+            var safeName = makeValidFileName(rawCsvName, prefs.useDelimiter);
             var dotIdx = safeName.lastIndexOf(".");
             if (dotIdx > 0) { safeName = safeName.substring(0, dotIdx); }
             if (safeName.length === 0) { safeName = "untitled"; }
