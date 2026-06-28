@@ -1,80 +1,99 @@
 # ============================================================
-# Export Layers To Files — CSV Template
+# Export Layers To Files — CSV Manifest Template
 # ============================================================
 #
 # HOW IT WORKS
-# Each row maps 1-to-1 with a Photoshop layer, top to bottom.
-# Row 1  →  topmost layer
-# Row 2  →  second layer from top
-# ...and so on.
+# One CSV row = one output image.
+#   - A Path that points at a LAYER  exports that layer.
+#   - A Path that points at a FOLDER  flattens that whole folder
+#     into a single image.
+# Nothing else is exported. There is no positional matching and no
+# "row count must equal layer count" rule: every row names exactly
+# what it targets via its Path column, so inserting or reordering
+# layers in Photoshop never misaligns your manifest.
 #
-# The script reads this file, iterates through your layers in
-# order, and applies each row's settings to the matching layer.
-# The layer count in the PSD must match the row count in the CSV.
+# Anything you name is exported even if it (or a parent group) is
+# hidden — putting it in the manifest IS the intent to export it.
 #
-# COLUMNS
-# Width   — output canvas width in pixels
-# Height  — output canvas height in pixels
-# Padding — empty space (px) added around the layer content
-#            before fitting. Use 0 for no padding.
-# Filename — output filename without extension.
-#            Use subfolder/name to place the file in a subfolder
-#            (the folder is created automatically).
-#            Wrap the field in double quotes if the name itself
-#            contains a comma: "name, with comma"
-# Mode    — optional, defaults to "fit"
-#            fit    : scale the layer to fill the canvas (minus padding)
-#            canvas : set canvas to W×H without scaling the layer content
+# COLUMNS  (Width,Height,Padding,Filename,Mode,Path)
+# Width   — output canvas width in px.  Empty or 0 = natural size (no resize).
+# Height  — output canvas height in px. Empty or 0 = natural size.
+#            Width and Height are independent (277,272 = a 277×272 canvas).
+# Padding — px kept around the asset before fitting (fit mode only). Empty = 0.
+# Filename — output filename WITHOUT extension. Output-only; unrelated to the
+#            layer/folder name. Use subfolder/name to nest (folders are created
+#            automatically). Quote the field if the name contains a comma:
+#            "name, with comma".
+# Mode    — optional, defaults to "fit".
+#            fit    : scale the asset to fit inside (W-Padding*2) x (H-Padding*2),
+#                     centered on a W×H canvas.
+#            canvas : keep the asset at original px, centered on a W×H canvas,
+#                     cropping any overflow. Padding has no effect in canvas mode.
+# Path    — REQUIRED. The source locator, read top-down through the Layers panel:
+#            Name             a child matched by name (whitespace trimmed).
+#            [n]              the n-th direct child, [0] = TOP, counting art layers
+#                             AND sub-groups together exactly as the panel shows.
+#            Parent/Child     descend through groups with "/".
+#            Parent/[2]/Leaf  names and indices can be mixed.
+#            Only a segment that is exactly [digits] is an index — "Symbols [ALL]"
+#            is a NAME (the brackets are part of it).
 #
-# SPECIAL VALUES
-# -ignore  — skips this layer entirely (no file exported).
-#            The row still counts against the layer order so all
-#            rows below it remain correctly aligned.
-#            Use 0,0,0 for the W/H/P columns (they are ignored).
+# SCOPE  (optional, on a line BEFORE the header)
+#   scope: GroupA, GroupB
+#   Lists one or more TOP-LEVEL groups (by name or [index]). When present, every
+#   row's Path is resolved relative to each scope in turn, processed in the order
+#   listed, and each scope writes into its OWN output sub-folder named after it
+#   (e.g. OUT/GroupA/..., OUT/GroupB/...). With no scope: line, Paths are absolute
+#   from the document root.
 #
 # COMMENTS & BLANK LINES
-# Lines starting with # and blank lines are ignored.
-# The header row (Width,Height,Padding,Filename,Mode) is also ignored.
-#
+#   Lines starting with # and blank lines are ignored. Inline comments work too:
+#   anything after a # on a line is ignored. The header row is auto-detected.
 # ============================================================
 
-Width,Height,Padding,Filename,Mode
+Width,Height,Padding,Filename,Mode,Path
 
-# ---- FIT mode examples -------------------------------------
-# Layer content is scaled to fit inside (Width - Padding*2) x (Height - Padding*2).
-# Canvas is then set to exactly Width x Height.
+# ---- FIT mode (default) ------------------------------------
+# Scale the asset into (Width - Padding*2) x (Height - Padding*2),
+# then center it on a Width x Height canvas.
 
-# A full-size background — no padding needed
-1920,1080,0,background,fit
+# A full-size background layer
+1920,1080,0,background,fit,Background
 
-# A logo scaled to fit a 400×200 box with 20px breathing room on all sides
-400,200,20,logo,fit
+# A logo scaled to fit a 400×200 box with 20px breathing room
+400,200,20,logo,fit,UI/Logo
 
-# A title banner — "fit" is the default so the Mode column can be omitted
-800,120,0,title_banner
+# "fit" is the default, so the Mode column can be omitted
+800,120,0,title_banner,,UI/Title
 
-# ---- IGNORE example ----------------------------------------
-# This layer is skipped. No file is created.
-# The rows below still line up correctly with the layers below this one.
+# ---- CANVAS mode -------------------------------------------
+# Canvas set to exactly Width x Height; the asset keeps its original
+# pixels (overflow is cropped). Use for pixel-perfect icons/sprites.
 
-0,0,0,-ignore
+277,277,0,icon_star,canvas,Icons/Star
+277,277,0,icon_coin,canvas,Icons/[1]
 
-# ---- CANVAS mode examples ----------------------------------
-# Canvas is set to exactly Width x Height.
-# The layer content is NOT scaled — it stays at its original size.
-# Use this for icons or sprites that must stay pixel-perfect.
-# If the content is larger than the target it will be cropped (centered).
+# ---- NATURAL size ------------------------------------------
+# Empty Width/Height exports the asset at its own size (no resize).
 
-277,277,0,icon_star,canvas
-277,277,0,icon_coin,canvas
+,,,sprite_raw,,Sprites/Hero
 
-# ---- SUBFOLDER examples ------------------------------------
-# Use subfolder/filename to organise exports into folders.
-# The folder is created automatically inside the export destination.
-# Subfolders defined here override the Photoshop group hierarchy.
+# ---- FOLDER FLATTEN ----------------------------------------
+# A Path pointing at a GROUP flattens the whole group into one image.
+# Size/Mode apply to the flattened result just like a layer.
 
-480,80,0,ui/button_play,fit
-480,80,0,ui/button_settings,fit
+512,512,0,hero,fit,Characters/Hero
+512,512,0,boss,canvas,Characters/Boss
 
-# Deeper nesting is supported too
-64,64,0,hud/icons/health_bar,canvas
+# ---- SUBFOLDER output --------------------------------------
+# Use subfolder/filename in the Filename column to organise outputs.
+
+480,80,0,ui/button_play,fit,Buttons/Play
+64,64,0,hud/icons/health,canvas,HUD/Health
+
+# ---- SCOPE example -----------------------------------------
+# Move the line below ABOVE the header to enable it. Each listed group
+# becomes its own output sub-folder, and the Paths above resolve inside
+# each scope in turn (rows that don't resolve in a scope are skipped):
+#
+# scope: Jackpots, LowSymbols

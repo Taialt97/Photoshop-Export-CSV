@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Local export output / test renders (not part of the project)
+EXPORT TEST/
+*-export/
+out/
+output/
+
+# CSV debug log written by the script
+ExportLayersCSV-debug.log

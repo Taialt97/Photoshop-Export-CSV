@@ -1,0 +1,9 @@
+# Minimal example: a few layers and a couple of canvas-mode banners.
+# One row = one output image; Path names the source layer or folder.
+
+Width,Height,Padding,Filename,Mode,Path
+500,500,10,symbol_01,fit,Symbols/symbol_01
+500,500,10,symbol_02,fit,Symbols/symbol_02
+500,500,10,symbol_03,fit,Symbols/symbol_03
+600,400,5,banner_01,canvas,Banners/banner_01
+600,400,5,banner_02,canvas,Banners/banner_02
