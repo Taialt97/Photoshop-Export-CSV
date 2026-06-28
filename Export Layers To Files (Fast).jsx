@@ -425,9 +425,11 @@ var groups;
 var layerCount = 0;
 var visibleLayerCount = 0;
 var selectedLayerCount = 0;
+// Flattened list of every row across all blocks -- used only by the "has anything to
+// export" gates in main() and btnRun. The structured data lives in csvBlocks.
 var csvManifestData = [];
-// Top-level scope entries parsed from a leading "scope:" line in the CSV (may be empty).
-var csvScopes = [];
+// Parsed scope blocks: [{ scopeSpec: string|null, folderName: string|null, rows: [...] }].
+var csvBlocks = [];
 // Set by the Manifest panel checkbox while the dialog is open.
 var csvManifestDebugEnabled = false;
 
@@ -853,7 +855,13 @@ function csvOutputParts(filenameField, scopeName) {
     }
     var folders = "";
     if (scopeName && scopeName.length > 0) {
-        folders += makeValidFileName(scopeName, prefs.useDelimiter) + "/";
+        // scopeName is the block's output folder; it may itself contain subfolders
+        // ("sets/main"), so split on "/" the same way the filename sub-path is below.
+        var fsegs = scopeName.split("/");
+        for (var fsi = 0; fsi < fsegs.length; fsi++) {
+            var fseg = csvTrim(fsegs[fsi]);
+            if (fseg.length > 0) { folders += makeValidFileName(fseg, prefs.useDelimiter) + "/"; }
+        }
     }
     if (subPath.length > 0) {
         var segs = subPath.split("/");
@@ -1034,29 +1042,40 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     // (single layer AND flattened folder), so demote it to a normal layer on the duplicate.
     neutralizeBackgroundLayer();
 
-    // --- Build export jobs: { scopeName, rootId } (rootId null => document root) ---
+    // --- Build export jobs from the parsed scope blocks ---
+    // Each job: { folderName, rootId (null means document root), rows }. Resolve every scoped
+    // block's top-level root to its stable id BEFORE pruning (an index re-lookup after prune
+    // would be wrong, but an id re-lookup stays valid), then prune to the UNION of those roots.
     var jobs = [];
-    if (csvScopes && csvScopes.length > 0) {
-        // Resolve scope roots to references (and read their stable ids) BEFORE pruning --
-        // an index re-lookup after prune would be wrong, but an id re-lookup stays valid.
-        var keepIds = [];
-        var scopeRootById = []; // parallel to csvScopes: the id, or null if unresolved
-        for (var s = 0; s < csvScopes.length; s++) {
-            var resolved = resolveCsvPath(csvScopes[s], app.activeDocument);
-            // A scope must be a TOP-LEVEL group: its parent is the document. A nested group
-            // would make the prune (by top-level id) delete its own ancestor -- reject it.
-            var isTopLevelGroup = resolved && resolved.typename === "LayerSet" &&
-                resolved.parent && resolved.parent.typename === "Document";
-            if (!isTopLevelGroup) {
-                badScopes.push(csvScopes[s]);
-                scopeRootById.push(null);
-            } else {
-                scopeRootById.push(resolved.id);
-                keepIds.push(resolved.id);
-            }
+    var keepIds = [];
+    var anyUnscoped = false;
+    for (var b = 0; b < csvBlocks.length; b++) {
+        var block = csvBlocks[b];
+        if (block.scopeSpec === null) {
+            anyUnscoped = true;
+            jobs.push({ folderName: "", rootId: null, rows: block.rows });
+            continue;
         }
-        // Prune: remove top-level groups whose id is not a scope root. Snapshot the live
-        // collection first -- removing from it while iterating shifts indices.
+        var resolved = resolveCsvPath(block.scopeSpec, app.activeDocument);
+        // A scope must be a TOP-LEVEL group: its parent is the document. A nested group
+        // would make the prune (by top-level id) delete its own ancestor -- reject it.
+        var isTopLevelGroup = resolved && resolved.typename === "LayerSet" &&
+            resolved.parent && resolved.parent.typename === "Document";
+        if (!isTopLevelGroup) {
+            badScopes.push(block.scopeSpec);
+            continue;
+        }
+        keepIds.push(resolved.id);
+        // "folder:" omitted -> default the output folder to the resolved group's name.
+        var folderName = (block.folderName !== null && block.folderName.length > 0) ?
+            block.folderName : resolved.name;
+        jobs.push({ folderName: folderName, rootId: resolved.id, rows: block.rows });
+    }
+
+    // Prune to the UNION of all block scopes. If any block is unscoped (doc root) the run
+    // needs the whole document, so skip pruning entirely. Snapshot the live collection first
+    // -- removing from it while iterating shifts indices.
+    if (!anyUnscoped && keepIds.length > 0) {
         var topSets = [];
         for (var ti = 0; ti < app.activeDocument.layerSets.length; ti++) {
             topSets.push(app.activeDocument.layerSets[ti]);
@@ -1071,13 +1090,6 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                 try { topSets[di].remove(); } catch (eRem) { }
             }
         }
-        for (var sj = 0; sj < csvScopes.length; sj++) {
-            if (scopeRootById[sj] !== null) {
-                jobs.push({ scopeName: csvScopes[sj], rootId: scopeRootById[sj] });
-            }
-        }
-    } else {
-        jobs.push({ scopeName: "", rootId: null });
     }
 
     // --- Validation pass: resolve every row, collect failures + collisions ---
@@ -1088,27 +1100,27 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         return findTopLevelSetById(job.rootId);
     }
 
-    var unresolvedRows = [];   // human-readable "scope:path" strings
-    var collisions = [];       // "scope:path overwrites earlier <name>" strings
-    var seenKeys = {};         // collision key -> first "scope:path" that claimed it
+    var unresolvedRows = [];   // human-readable "folder/path" strings
+    var collisions = [];       // "folder/path overwrites earlier <name>" strings
+    var seenKeys = {};         // collision key (by output folder) -> first claimant
     var resolvableCount = 0;
     for (var jv = 0; jv < jobs.length; jv++) {
         var jobV = jobs[jv];
         var rootV = jobRoot(jobV);
-        var scopeLabel = jobV.scopeName.length ? (jobV.scopeName + " / ") : "";
-        for (var rv = 0; rv < csvManifestData.length; rv++) {
-            var rowV = csvManifestData[rv];
+        var folderLabel = jobV.folderName.length ? (jobV.folderName + " / ") : "";
+        for (var rv = 0; rv < jobV.rows.length; rv++) {
+            var rowV = jobV.rows[rv];
             var hit = rootV ? resolveCsvPath(rowV.path, rootV) : null;
             if (!hit) {
-                unresolvedRows.push(scopeLabel + rowV.path);
+                unresolvedRows.push(folderLabel + rowV.path);
                 continue;
             }
             resolvableCount++;
-            var key = csvOutputKey(rowV.filename, jobV.scopeName);
+            var key = csvOutputKey(rowV.filename, jobV.folderName);
             if (seenKeys[key]) {
-                collisions.push(scopeLabel + rowV.path + " -> \"" + rowV.filename + "\" overwrites " + seenKeys[key]);
+                collisions.push(folderLabel + rowV.path + " -> \"" + rowV.filename + "\" overwrites " + seenKeys[key]);
             } else {
-                seenKeys[key] = scopeLabel + rowV.path;
+                seenKeys[key] = folderLabel + rowV.path;
             }
         }
     }
@@ -1125,27 +1137,29 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     }
 
     // --- Export pass: re-resolve each row live and dispatch ---
+    var totalRows = 0;
+    for (var jt = 0; jt < jobs.length; jt++) { totalRows += jobs[jt].rows.length; }
     if (progressBarWindow) {
-        showProgressBar(progressBarWindow, "Exporting (CSV Manifest)...", jobs.length * csvManifestData.length);
+        showProgressBar(progressBarWindow, "Exporting (CSV Manifest)...", totalRows);
     }
     var done = 0;
     try {
         for (var je = 0; je < jobs.length && !userCancelled; je++) {
             var job = jobs[je];
-            for (var re = 0; re < csvManifestData.length; re++) {
-                var row = csvManifestData[re];
+            for (var re = 0; re < job.rows.length; re++) {
+                var row = job.rows[re];
                 var root = jobRoot(job);
                 var target = root ? resolveCsvPath(row.path, root) : null;
                 if (target) {
                     if (target.typename === "LayerSet") {
-                        exportFlattenedFolder(target, row, job.scopeName, retVal, failures, warnings, ext);
+                        exportFlattenedFolder(target, row, job.folderName, retVal, failures, warnings, ext);
                     } else {
-                        exportSingleLayer(target, row, job.scopeName, retVal, failures, warnings, ext);
+                        exportSingleLayer(target, row, job.folderName, retVal, failures, warnings, ext);
                     }
                 }
                 done++;
                 if (progressBarWindow) {
-                    updateProgressBar(progressBarWindow, "Exporting " + done + " of " + (jobs.length * csvManifestData.length) + "...");
+                    updateProgressBar(progressBarWindow, "Exporting " + done + " of " + totalRows + "...");
                     repaintProgressBar(progressBarWindow);
                     if (userCancelled) { break; }
                 }
@@ -1379,27 +1393,55 @@ function parseCsvDimension(str) {
     return n < 0 ? 0 : n;
 }
 
-// Parse the CSV manifest into row objects plus an optional scope list.
+// Parse a "scope: <Spec> [folder: <Out>]" line into { scopeSpec, folderName }. The split is
+// on the FIRST whitespace-preceded "folder:" token (case-insensitive) so a scope name that
+// merely contains the substring "folder:" is not mis-split. folderName is null when "folder:"
+// is omitted (the caller then defaults it to the resolved scope's name).
+function parseScopeFolderLine(trimmedLine) {
+    var afterScope = trimmedLine.substring(trimmedLine.indexOf(":") + 1);
+    var low = afterScope.toLowerCase();
+    var fIdx = -1;
+    var searchFrom = 0;
+    while (true) {
+        var k = low.indexOf("folder:", searchFrom);
+        if (k < 0) { break; }
+        if (k === 0 || /\s/.test(afterScope.charAt(k - 1))) { fIdx = k; break; }
+        searchFrom = k + 7; // length of "folder:"
+    }
+    if (fIdx >= 0) {
+        return {
+            scopeSpec: csvTrim(afterScope.substring(0, fIdx)),
+            folderName: csvTrim(afterScope.substring(fIdx + 7))
+        };
+    }
+    return { scopeSpec: csvTrim(afterScope), folderName: null };
+}
+
+// Parse the CSV manifest into a list of scope blocks (see the per-block format below).
 // Format: Width,Height,Padding,Filename,Mode,Path  (header auto-detected & skipped).
 //   - Width/Height/Padding may be empty (=> 0 => natural size).
 //   - Mode is optional ("fit" default / "canvas").
 //   - Filename is required (output-only, may contain "subfolder/name").
 //   - Path is required: the source locator resolved by resolveCsvPath().
-// A leading "scope: A, B" line (case-insensitive) lists top-level groups to export in order.
-// Returns { rows: [...], scopes: [...] }. An OLD-format file (folder:/-ignore marker, or a
-// row whose last field is literally fit/canvas with no Path) aborts with a clear message.
+// The CSV is a sequence of BLOCKS. A "scope: <Spec> [folder: <Out>]" line (case-insensitive)
+// starts a block, which REQUIRES its own header row, then its rows. With no scope: line the
+// whole file is one implicit doc-root block (today's behavior, optional header).
+// Returns { blocks: [ { scopeSpec: string|null, folderName: string|null, rows: [...] } ] }.
+// An OLD-format file (folder:/-ignore marker, or a row whose last field is literally
+// fit/canvas with no Path) aborts with a clear message.
 function parseCsvFile(filePath) {
-    var rows = [];
-    var scopes = [];
+    var blocks = [];
     var f = new File(filePath);
     if (!f.exists) {
         alert("CSV file not found:\n" + filePath, "CSV Error", true);
-        return { rows: rows, scopes: scopes };
+        return { blocks: blocks };
     }
     var skipped = [];
+    var current = null;            // block that data rows are appended to
+    var expectingHeader = false;   // true right after a scope: line (header is mandatory)
+    var implicitAutoHeader = true; // leading no-scope block keeps today's header auto-detect
     try {
         f.open("r");
-        var firstDataLine = true;
         var lineNum = 0;
         while (!f.eof) {
             var line = stripInlineComment(f.readln());
@@ -1407,27 +1449,45 @@ function parseCsvFile(filePath) {
             var trimmed = csvTrim(line);
             if (trimmed.length === 0) { continue; }
 
-            // "scope:" directive (case-insensitive): one or more top-level groups,
-            // comma-separated. May appear before the header.
+            // A "scope:" line (case-insensitive) starts a new block; an optional "folder:"
+            // token on the same line names its output sub-folder.
             if (trimmed.toLowerCase().indexOf("scope:") === 0) {
-                var spec = trimmed.substring(trimmed.indexOf(":") + 1);
-                var sParts = spec.split(",");
-                for (var si = 0; si < sParts.length; si++) {
-                    var sName = csvTrim(sParts[si]);
-                    if (sName.length > 0) { scopes.push(sName); }
-                }
+                var sf = parseScopeFolderLine(trimmed);
+                current = { scopeSpec: sf.scopeSpec, folderName: sf.folderName, rows: [] };
+                blocks.push(current);
+                expectingHeader = true;
                 continue;
             }
 
             var parts = splitCsvLine(line);
             var col0 = csvTrim(parts[0]);
+            // A header row has a non-empty, non-numeric first cell. A data row may have an
+            // EMPTY Width (natural size), so an empty/numeric first cell is never a header.
+            var looksLikeHeader = (col0.length > 0 && isNaN(parseInt(col0, 10)));
 
-            if (firstDataLine) {
-                firstDataLine = false;
-                // Skip a text header row (e.g. "Width,Height,Padding,Filename,Mode,Path").
-                // A data row may legitimately have an EMPTY Width (natural size), so only a
-                // non-empty, non-numeric first cell counts as a header.
-                if (col0.length > 0 && isNaN(parseInt(col0, 10))) { continue; }
+            // Every scope: block REQUIRES its own header row immediately after the scope line.
+            if (expectingHeader) {
+                if (looksLikeHeader) { expectingHeader = false; continue; }
+                try { f.close(); } catch (eCh) { }
+                var blockLabel = "scope: " + current.scopeSpec +
+                    (current.folderName !== null ? ("  folder: " + current.folderName) : "");
+                alert(
+                    "CSV parse error -- the block \"" + blockLabel + "\" is missing its header row.\n\n" +
+                    "Each scope: block must be followed by a header line\n" +
+                    "(Width,Height,Padding,Filename,Mode,Path) before its rows.",
+                    "CSV Format Error", true);
+                return { blocks: [] };
+            }
+
+            // No scope: line yet -> the leading rows form a single implicit (doc-root) block,
+            // which keeps today's optional-header auto-detect for backward compatibility.
+            if (current === null) {
+                current = { scopeSpec: null, folderName: "", rows: [] };
+                blocks.push(current);
+            }
+            if (implicitAutoHeader && current.scopeSpec === null) {
+                implicitAutoHeader = false;
+                if (looksLikeHeader) { continue; }
             }
 
             // Reject the old positional format up front rather than mis-parsing it.
@@ -1441,7 +1501,7 @@ function parseCsvFile(filePath) {
                         "(Width,Height,Padding,Filename,Mode,Path) naming the layer or folder\n" +
                         "to export. Please update the CSV.",
                         "CSV Format Changed", true);
-                    return { rows: [], scopes: [] };
+                    return { blocks: [] };
                 }
             }
 
@@ -1461,7 +1521,7 @@ function parseCsvFile(filePath) {
                     "Rows now end with a Path column naming the layer or folder to export:\n" +
                     "Width,Height,Padding,Filename,Mode,Path. Please update the CSV.",
                     "CSV Format Changed", true);
-                return { rows: [], scopes: [] };
+                return { blocks: [] };
             }
 
             // The field before Path is Mode only when it is a known keyword; otherwise
@@ -1492,12 +1552,12 @@ function parseCsvFile(filePath) {
                 continue;
             }
 
-            rows.push({ width: w, height: h, padding: p, filename: fn, mode: mode, path: pathStr });
+            current.rows.push({ width: w, height: h, padding: p, filename: fn, mode: mode, path: pathStr });
         }
         f.close();
     } catch (e) {
         alert("Failed to read CSV file:\n" + e.message, "CSV Error", true);
-        return { rows: [], scopes: [] };
+        return { blocks: [] };
     }
     if (skipped.length > 0) {
         var maxShown = 10;
@@ -1507,7 +1567,7 @@ function parseCsvFile(filePath) {
         }
         alert("Skipped " + skipped.length + " malformed CSV row(s):\n\n" + lines, "CSV Warning", false);
     }
-    return { rows: rows, scopes: scopes };
+    return { blocks: blocks };
 }
 
 function resizeImageToFit(canvasW, canvasH, padding) {
@@ -2048,8 +2108,15 @@ function showDialog() {
                 return;
             }
             var parsed = parseCsvFile(csvPath);
-            csvManifestData = parsed.rows;
-            csvScopes = parsed.scopes;
+            csvBlocks = parsed.blocks;
+            // Flatten every block's rows so the existing "has anything to export" length
+            // gates (here and in main()) keep working without change.
+            csvManifestData = [];
+            for (var _bi = 0; _bi < csvBlocks.length; _bi++) {
+                for (var _ri = 0; _ri < csvBlocks[_bi].rows.length; _ri++) {
+                    csvManifestData.push(csvBlocks[_bi].rows[_ri]);
+                }
+            }
             if (csvManifestData.length === 0) {
                 alert("The CSV file is empty or could not be parsed.", "CSV Manifest", true);
                 return;
@@ -2060,7 +2127,7 @@ function showDialog() {
             prefs.csvEnabled = false;
             prefs.csvFilePath = "";
             csvManifestData = [];
-            csvScopes = [];
+            csvBlocks = [];
         }
 
         // Preserve CSV runtime prefs before finalizeSettingsPrerun wipes prefs
