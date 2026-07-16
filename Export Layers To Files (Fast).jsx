@@ -1022,42 +1022,46 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
     }
 }
 
-// Export a "::" drill row: open the Smart Object named by the prefix, resolve the remainder
-// INSIDE its contents with the same resolver, export it (layer -> single, group -> flattened),
-// then close the contents WITHOUT saving so nothing is written back to the SO or the source.
-// Step 2 handles exactly one level (prefix "::" remainder); nested chains are Step 4. The
-// existing export functions act on app.activeDocument, which is the opened SO document here, so
-// they work unchanged -- the export happens at the SO's native (internal) resolution.
+// Export a "::" drill row, drilling through one OR MORE Smart Objects. Each "::" segment is
+// resolved with the same resolver against the current container; a non-final segment must be a
+// Smart Object, whose contents are opened so the next segment resolves inside it. The final
+// segment is exported (layer -> single, group -> flattened) from within the innermost SO, at
+// that SO's native (internal) resolution. Every opened contents document is closed WITHOUT
+// saving, innermost first, so nothing is written back to any SO or the source PSD. The finally
+// block always runs the close loop, so a broken chain (or an error mid-drill) leaves no stray
+// open documents.
 function exportDrillRow(row, root, folderName, retVal, failures, warnings, ext) {
     var label = row.path;
-    var segs = splitDrillSegments(row.path);
-    if (segs.length !== 2) {
-        failures.push("\"" + label + "\": nested SO drilling (multiple \"::\") not yet supported");
-        retVal.error = true;
-        return;
-    }
-    var soLayer = root ? resolveCsvPath(segs[0], root) : null;
-    if (!soLayer) {
-        warnings.push("\"" + label + "\": SO prefix \"" + segs[0] + "\" did not resolve -- skipped");
-        return;
-    }
-    if (!isSmartObjectLayer(soLayer)) {
-        failures.push("\"" + label + "\": prefix \"" + segs[0] + "\" is not a Smart Object");
-        retVal.error = true;
-        return;
-    }
+    var segs = splitDrillSegments(row.path); // isDrillPath guaranteed at least two segments
     var parentDoc = app.activeDocument;
-    var soDoc = null;
+    var openedDocs = []; // SO contents docs, in open order; closed in reverse (innermost first)
     try {
-        soDoc = openSmartObjectContents(soLayer);
-        // The SO contents may carry an opaque Background layer; demote it so isolation can hide
-        // it and transparency is preserved -- exactly what the main duplicate does. Safe: the
-        // contents doc is closed without saving.
-        neutralizeBackgroundLayer();
-        var target = resolveCsvPath(segs[1], soDoc);
-        if (!target) {
-            warnings.push("\"" + label + "\": \"" + segs[1] + "\" not found inside Smart Object -- skipped");
-        } else if (target.typename === "LayerSet") {
+        var current = root; // container the next segment resolves against
+        var target = null;
+        for (var i = 0; i < segs.length; i++) {
+            var ref = resolveCsvPath(segs[i], current);
+            if (!ref) {
+                warnings.push("\"" + label + "\": \"" + segs[i] + "\"" +
+                    (i === 0 ? " did not resolve" : " not found inside Smart Object") + " -- skipped");
+                return; // finally closes anything already opened
+            }
+            if (i === segs.length - 1) { target = ref; break; }
+            // A non-final segment must be a Smart Object so we can drill one level deeper.
+            if (!isSmartObjectLayer(ref)) {
+                failures.push("\"" + label + "\": \"" + segs[i] +
+                    "\" is not a Smart Object (cannot drill deeper)");
+                retVal.error = true;
+                return;
+            }
+            var soDoc = openSmartObjectContents(ref);
+            openedDocs.push(soDoc);
+            // The SO contents may carry an opaque Background layer; demote it so isolation can
+            // hide it and transparency is preserved -- exactly what the main duplicate does.
+            // Safe: this contents doc is closed without saving.
+            neutralizeBackgroundLayer();
+            current = soDoc; // resolve the next segment inside this SO
+        }
+        if (target.typename === "LayerSet") {
             exportFlattenedFolder(target, row, folderName, retVal, failures, warnings, ext);
         } else {
             exportSingleLayer(target, row, folderName, retVal, failures, warnings, ext);
@@ -1066,8 +1070,10 @@ function exportDrillRow(row, root, folderName, retVal, failures, warnings, ext) 
         failures.push("\"" + label + "\": " + e.message);
         retVal.error = true;
     } finally {
-        if (soDoc) { try { closeSmartObjectContents(soDoc); } catch (eClose) { } }
-        // Defensively restore the parent as the active document for the next row.
+        // Close innermost first; never save. Then restore the parent as the active document.
+        for (var d = openedDocs.length - 1; d >= 0; d--) {
+            try { closeSmartObjectContents(openedDocs[d]); } catch (eClose) { }
+        }
         try { app.activeDocument = parentDoc; } catch (eAct) { }
     }
 }
