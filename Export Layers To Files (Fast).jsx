@@ -1022,61 +1022,56 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
     }
 }
 
-// Export a "::" drill row, drilling through one OR MORE Smart Objects. Each "::" segment is
-// resolved with the same resolver against the current container; a non-final segment must be a
-// Smart Object, whose contents are opened so the next segment resolves inside it. The final
-// segment is exported (layer -> single, group -> flattened) from within the innermost SO, at
-// that SO's native (internal) resolution. Every opened contents document is closed WITHOUT
-// saving, innermost first, so nothing is written back to any SO or the source PSD. The finally
-// block always runs the close loop, so a broken chain (or an error mid-drill) leaves no stray
-// open documents.
-function exportDrillRow(row, root, folderName, retVal, failures, warnings, ext) {
-    var label = row.path;
-    var segs = splitDrillSegments(row.path); // isDrillPath guaranteed at least two segments
+// ----- Smart Object drill helpers -----
+// A "::" row drills through one OR MORE Smart Objects. The non-final "::" segments name the SO
+// chain (the "prefix"); the final segment is the path to export INSIDE the innermost SO. Rows
+// that share the same prefix can export against ONE opened chain (Step 5), so the export loop
+// keeps the chain open across consecutive same-prefix rows and closes it lazily (on a prefix
+// change, a non-drill row, or job end). openDrillChain opens the prefix; closeDrillDocs tears it
+// down; the loop resolves each row's final segment and dispatches to the normal export funcs.
+
+// The prefix key groups rows that can share an opened chain: all "::" segments except the last.
+function drillPrefixKey(segs) { return segs.slice(0, segs.length - 1).join("::"); }
+
+// Open the SO chain named by prefixSegs (segs minus the final segment) so subsequent rows with
+// the same prefix reuse it. Returns { docs, innermost, parentDoc, prefixKey } on success (the
+// caller must close it with closeDrillDocs later), or { errorMsg, isFailure } on a broken chain
+// (already cleaned up, parent doc active). A "not found" prefix is a warning (isFailure false);
+// a resolved-but-not-a-Smart-Object segment is a loud failure (isFailure true).
+function openDrillChain(prefixSegs, root, prefixKey) {
     var parentDoc = app.activeDocument;
-    var openedDocs = []; // SO contents docs, in open order; closed in reverse (innermost first)
-    try {
-        var current = root; // container the next segment resolves against
-        var target = null;
-        for (var i = 0; i < segs.length; i++) {
-            var ref = resolveCsvPath(segs[i], current);
-            if (!ref) {
-                warnings.push("\"" + label + "\": \"" + segs[i] + "\"" +
-                    (i === 0 ? " did not resolve" : " not found inside Smart Object") + " -- skipped");
-                return; // finally closes anything already opened
-            }
-            if (i === segs.length - 1) { target = ref; break; }
-            // A non-final segment must be a Smart Object so we can drill one level deeper.
-            if (!isSmartObjectLayer(ref)) {
-                failures.push("\"" + label + "\": \"" + segs[i] +
-                    "\" is not a Smart Object (cannot drill deeper)");
-                retVal.error = true;
-                return;
-            }
-            var soDoc = openSmartObjectContents(ref);
-            openedDocs.push(soDoc);
-            // The SO contents may carry an opaque Background layer; demote it so isolation can
-            // hide it and transparency is preserved -- exactly what the main duplicate does.
-            // Safe: this contents doc is closed without saving.
-            neutralizeBackgroundLayer();
-            current = soDoc; // resolve the next segment inside this SO
+    var docs = []; // opened in order; closeDrillDocs closes them innermost-first
+    var current = root;
+    for (var i = 0; i < prefixSegs.length; i++) {
+        var ref = resolveCsvPath(prefixSegs[i], current);
+        if (!ref) {
+            closeDrillDocs(docs, parentDoc);
+            return { errorMsg: "\"" + prefixSegs[i] + "\"" +
+                (i === 0 ? " did not resolve" : " not found inside Smart Object"), isFailure: false };
         }
-        if (target.typename === "LayerSet") {
-            exportFlattenedFolder(target, row, folderName, retVal, failures, warnings, ext);
-        } else {
-            exportSingleLayer(target, row, folderName, retVal, failures, warnings, ext);
+        if (!isSmartObjectLayer(ref)) {
+            closeDrillDocs(docs, parentDoc);
+            return { errorMsg: "\"" + prefixSegs[i] + "\" is not a Smart Object (cannot drill deeper)", isFailure: true };
         }
-    } catch (e) {
-        failures.push("\"" + label + "\": " + e.message);
-        retVal.error = true;
-    } finally {
-        // Close innermost first; never save. Then restore the parent as the active document.
-        for (var d = openedDocs.length - 1; d >= 0; d--) {
-            try { closeSmartObjectContents(openedDocs[d]); } catch (eClose) { }
-        }
-        try { app.activeDocument = parentDoc; } catch (eAct) { }
+        var soDoc = openSmartObjectContents(ref);
+        docs.push(soDoc);
+        // Demote an opaque Background inside the SO so isolation can hide it (transparency),
+        // exactly as the main duplicate does. Safe: the contents doc is closed without saving.
+        neutralizeBackgroundLayer();
+        current = soDoc; // resolve the next segment inside this SO
     }
+    return { docs: docs, innermost: current, parentDoc: parentDoc, prefixKey: prefixKey };
 }
+// Close every opened SO contents doc innermost-first, never saving, then restore parentDoc.
+function closeDrillDocs(docs, parentDoc) {
+    for (var d = docs.length - 1; d >= 0; d--) {
+        try { closeSmartObjectContents(docs[d]); } catch (eClose) { }
+    }
+    try { app.activeDocument = parentDoc; } catch (eAct) { }
+}
+
+// ----- default: sweep helpers (additive; they only READ the tree and CALL the existing
+// export functions -- they never modify exportSingleLayer/exportFlattenedFolder) -----
 
 // ----- default: sweep helpers (additive; they only READ the tree and CALL the existing
 // export functions -- they never modify exportSingleLayer/exportFlattenedFolder) -----
@@ -1179,6 +1174,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     var savedDialogMode = app.displayDialogs;
     app.displayDialogs = DialogModes.NO;
     var ext = prefs.fileExtension;
+    CSV_SO_OPENS = 0; // count Smart Object opens for the summary (Step 5)
 
     var retVal = { count: 0, error: false };
     var failures = [];   // hard errors (save/folder failures)
@@ -1340,7 +1336,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         var head = DRY_RUN ? "DRY RUN (no files written)." :
             "Nothing to export: no CSV row resolved to a layer or folder.";
         showCsvSummary(head, 0, failures, warnings, badScopes, unresolvedRows, collisions,
-            drillRecognized, drillBadPrefix, dupDurationMs, profiler.format(profiler.getDuration(true, true)));
+            drillRecognized, drillBadPrefix, dupDurationMs, profiler.format(profiler.getDuration(true, true)), CSV_SO_OPENS);
         return 0;
     }
 
@@ -1353,17 +1349,53 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     }
     var done = 0;
     var sweptTotal = 0; // swept files actually saved (for the summary)
+    // Step 5: keep the current drill chain open across consecutive rows that share its "::"
+    // prefix, so each Smart Object is opened once instead of once per row. Closed lazily by
+    // closeOpenChain() whenever the prefix changes, a non-drill row appears, or the job ends.
+    var openChain = null;
+    function closeOpenChain() {
+        if (openChain) { closeDrillDocs(openChain.docs, openChain.parentDoc); openChain = null; }
+    }
     try {
         for (var je = 0; je < jobs.length && !userCancelled; je++) {
             var job = jobs[je];
             for (var re = 0; re < job.rows.length; re++) {
                 var row = job.rows[re];
-                var root = jobRoot(job);
-                // Step 2: a "::" row drills into the Smart Object named by the prefix, exports
-                // the remainder from inside its contents, and closes it without saving.
                 if (isDrillPath(row.path)) {
-                    exportDrillRow(row, root, job.folderName, retVal, failures, warnings, ext);
+                    // Drill row: reuse the open chain if its prefix matches, else (re)open it.
+                    var segs = splitDrillSegments(row.path);
+                    var prefixKey = drillPrefixKey(segs);
+                    var finalSeg = segs[segs.length - 1];
+                    var chainOk = true;
+                    if (!openChain || openChain.prefixKey !== prefixKey) {
+                        closeOpenChain(); // restores the parent as active doc
+                        var res = openDrillChain(segs.slice(0, segs.length - 1), jobRoot(job), prefixKey);
+                        if (res.errorMsg) {
+                            if (res.isFailure) { failures.push("\"" + row.path + "\": " + res.errorMsg); retVal.error = true; }
+                            else { warnings.push("\"" + row.path + "\": " + res.errorMsg + " -- skipped"); }
+                            chainOk = false;
+                        } else {
+                            openChain = res;
+                        }
+                    }
+                    if (chainOk) {
+                        try {
+                            app.activeDocument = openChain.innermost; // defensive: export funcs act on active doc
+                            var dtarget = resolveCsvPath(finalSeg, openChain.innermost);
+                            if (!dtarget) {
+                                warnings.push("\"" + row.path + "\": \"" + finalSeg + "\" not found inside Smart Object -- skipped");
+                            } else if (dtarget.typename === "LayerSet") {
+                                exportFlattenedFolder(dtarget, row, job.folderName, retVal, failures, warnings, ext);
+                            } else {
+                                exportSingleLayer(dtarget, row, job.folderName, retVal, failures, warnings, ext);
+                            }
+                        } catch (eDrill) {
+                            failures.push("\"" + row.path + "\": " + eDrill.message); retVal.error = true;
+                        }
+                    }
                 } else {
+                    closeOpenChain(); // a normal row must run against the parent document
+                    var root = jobRoot(job);
                     var target = root ? resolveCsvPath(row.path, root) : null;
                     if (target) {
                         if (target.typename === "LayerSet") {
@@ -1380,6 +1412,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                     if (userCancelled) { break; }
                 }
             }
+            closeOpenChain(); // close any chain left open before the sweep / next job
             // After the listed rows (overrides), sweep the scope at the block's default. The
             // listed rows obey folder: (OUT/<folderName>/); the swept "rest" goes to the ROOT
             // export folder (OUT/), recursive mirroring nesting under it via filenameField.
@@ -1406,6 +1439,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
             }
         }
     } finally {
+        try { closeOpenChain(); } catch (eChain) { } // never leave an SO open on cancel/error
         app.displayDialogs = savedDialogMode;
         if (progressBarWindow) { progressBarWindow.hide(); }
     }
@@ -1415,7 +1449,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         (sweptTotal > 0 ? (" (" + sweptTotal + " swept)") : "") + "." +
         (userCancelled ? "  (cancelled early)" : "");
     showCsvSummary(head, retVal.count, failures, warnings, badScopes, unresolvedRows, collisions,
-        drillRecognized, drillBadPrefix, dupDurationMs, exportDuration);
+        drillRecognized, drillBadPrefix, dupDurationMs, exportDuration, CSV_SO_OPENS);
 
     // Open the output folder when done.
     try { (new Folder(prefs.destination)).execute(); } catch (eOpen) { }
@@ -1426,7 +1460,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
 // Build and show the end-of-run CSV summary. Bad scopes are surfaced first and loud
 // (a bad scope silently drops a whole branch the user intended to export). Timing is
 // always included so duplicate() vs export cost can be compared later.
-function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, drillRecognized, drillBadPrefix, dupDurationMs, exportDurationStr) {
+function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, drillRecognized, drillBadPrefix, dupDurationMs, exportDurationStr, soOpens) {
     var maxPer = 10;
     function section(title, items) {
         if (!items || items.length === 0) { return ""; }
@@ -1443,6 +1477,7 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     msg += section("SO-drill rows (drilled into a Smart Object)", drillRecognized);
     msg += section("Warnings", warnings);
     msg += "\n\nTiming:  duplicate " + formatMs(dupDurationMs) + "   +   export " + exportDurationStr;
+    if (soOpens && soOpens > 0) { msg += "\nSmart Object opens: " + soOpens; }
     var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0);
     alert(msg, "CSV Export Summary", isError);
 }
@@ -1514,12 +1549,16 @@ function isDrillPath(pathStr) { return String(pathStr).indexOf("::") !== -1; }
 function isSmartObjectLayer(ref) {
     try { return ref && ref.kind === LayerKind.SMARTOBJECT; } catch (e) { return false; }
 }
+// Count of Smart Object "Edit Contents" opens performed during a run (reported in the summary
+// so Step 5's "open each SO once" win is visible). Reset at the top of runCsvManifest.
+var CSV_SO_OPENS = 0;
 // Open a Smart Object's contents as a new (active) document -- the DOM has no method for this,
 // so it is the "Edit Contents" command via ActionManager. The SO layer must be the active
 // layer first. Returns the newly opened contents document (now app.activeDocument).
 function openSmartObjectContents(soLayer) {
     app.activeDocument.activeLayer = soLayer;
     executeAction(stringIDToTypeID("placedLayerEditContents"), undefined, DialogModes.NO);
+    CSV_SO_OPENS++;
     return app.activeDocument;
 }
 // Close an opened Smart Object contents document WITHOUT saving, so no edit is ever written
