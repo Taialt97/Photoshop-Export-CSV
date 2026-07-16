@@ -915,12 +915,34 @@ function bakeLayerStyleInPlace(layer) {
     } catch (eBake) { /* no layer style, or not rasterizable -- leave the layer untouched */ }
 }
 
-// Export one resolved ArtLayer row: isolate the layer (force it AND every ancestor group
-// visible, regardless of stored visibility), crop to its bounds, size per the row, save.
-// Wrapped in store/restore history so the crop/resize are undone; visibility is reset by
-// the leading and trailing hideAllLayersDeep (restoreHistory does NOT undo visibility).
-function exportSingleLayer(layer, row, scopeName, retVal, failures, warnings, ext) {
-    var label = row.path;
+// Save the CURRENT (already isolated/cropped/sized) document to every destination in `rows`,
+// counting one saved file per row. Rows in the array share the same render (same Path + Width +
+// Height + Padding + Mode -- see renderKey); only their Filename/output folder differs, so this
+// is the "render once, save many" path that Step 6 uses for multi-destination and Step 7's
+// multi-value Filename expansion. `label` is the shared source path for messages.
+function saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label) {
+    CSV_RENDERS++; // one render, saved to each destination below
+    for (var i = 0; i < rows.length; i++) {
+        var out = csvOutputFile(rows[i].filename, scopeName, ext);
+        if (out.error) {
+            failures.push("\"" + label + "\" -> \"" + rows[i].filename + "\": " + out.error);
+            retVal.error = true;
+        } else if (saveImage(out.file)) {
+            ++retVal.count;
+        } else {
+            failures.push("\"" + label + "\": failed to save \"" + out.file.name + "\"");
+            retVal.error = true;
+        }
+    }
+}
+
+// Export one resolved ArtLayer for one or more destination rows: isolate the layer (force it AND
+// every ancestor group visible, regardless of stored visibility), crop to its bounds, size per
+// the render, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
+// Wrapped in store/restore history so the crop/resize are undone; visibility is reset by the
+// leading and trailing hideAllLayersDeep (restoreHistory does NOT undo visibility).
+function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, ext) {
+    var label = rows[0].path;
     storeHistory();
     try {
         hideAllLayersDeep(app.activeDocument.layers);
@@ -942,18 +964,9 @@ function exportSingleLayer(layer, row, scopeName, retVal, failures, warnings, ex
         }
         try { app.activeDocument.crop(layer.bounds); } catch (eCrop) { }
 
-        applyCsvSizing(row);
+        applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
 
-        var out = csvOutputFile(row.filename, scopeName, ext);
-        if (out.error) {
-            failures.push("\"" + label + "\": " + out.error);
-            retVal.error = true;
-        } else if (saveImage(out.file)) {
-            ++retVal.count;
-        } else {
-            failures.push("\"" + label + "\": failed to save \"" + out.file.name + "\"");
-            retVal.error = true;
-        }
+        saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label);
     } catch (e) {
         failures.push("\"" + label + "\": " + e.message);
         retVal.error = true;
@@ -963,14 +976,15 @@ function exportSingleLayer(layer, row, scopeName, retVal, failures, warnings, ex
     }
 }
 
-// Export one resolved LayerSet row as a single flattened image: isolate the group (hide
-// all, re-show the whole group + ancestors), crop to the group's content bounds, size, save.
+// Export one resolved LayerSet as a single flattened image for one or more destination rows:
+// isolate the group (hide all, re-show the whole group + ancestors), crop to the group's content
+// bounds, size, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
 // Flattening is done by saveImage's composite (not merge(), which bakes a black Pass-Through
-// backdrop), so transparency is preserved exactly like a layer row. restoreHistory undoes
-// the crop; the leading/trailing hide reset visibility. The caller re-resolves `ls` fresh per
-// row because the crop+undo leaves refs stale.
-function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, ext) {
-    var label = row.path;
+// backdrop), so transparency is preserved exactly like a layer row. restoreHistory undoes the
+// crop; the leading/trailing hide reset visibility. The caller re-resolves `ls` fresh per row
+// because the crop+undo leaves refs stale.
+function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, ext) {
+    var label = rows[0].path;
     var wasHidden = false;
     try { wasHidden = !ls.visible; } catch (eVis) { }
     storeHistory();
@@ -996,20 +1010,12 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
         }
         try { app.activeDocument.crop(ls.bounds); } catch (eCrop) { }
 
-        applyCsvSizing(row);
+        applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
 
-        var out = csvOutputFile(row.filename, scopeName, ext);
-        if (out.error) {
-            failures.push("\"" + label + "\": " + out.error);
-            retVal.error = true;
-        } else if (saveImage(out.file)) {
-            ++retVal.count;
-            if (wasHidden) {
-                warnings.push("\"" + label + "\": flattened a HIDDEN group (forced visible to export)");
-            }
-        } else {
-            failures.push("\"" + label + "\": failed to save \"" + out.file.name + "\"");
-            retVal.error = true;
+        var savedBefore = retVal.count;
+        saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label);
+        if (wasHidden && retVal.count > savedBefore) {
+            warnings.push("\"" + label + "\": flattened a HIDDEN group (forced visible to export)");
         }
     } catch (e) {
         failures.push("\"" + label + "\": " + e.message);
@@ -1032,6 +1038,14 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
 
 // The prefix key groups rows that can share an opened chain: all "::" segments except the last.
 function drillPrefixKey(segs) { return segs.slice(0, segs.length - 1).join("::"); }
+
+// The render key groups rows that produce the SAME rendered image: same source Path and same
+// Width/Height/Padding/Mode. Consecutive rows with an equal render key differ only in their
+// output Filename, so they are rendered once and saved to each destination (Step 6). Two rows
+// with the same Path but a different size get different keys and each render independently.
+function renderKey(row) {
+    return row.path + "|" + row.width + "|" + row.height + "|" + row.padding + "|" + row.mode;
+}
 
 // Open the SO chain named by prefixSegs (segs minus the final segment) so subsequent rows with
 // the same prefix reuse it. Returns { docs, innermost, parentDoc, prefixKey } on success (the
@@ -1175,6 +1189,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     app.displayDialogs = DialogModes.NO;
     var ext = prefs.fileExtension;
     CSV_SO_OPENS = 0; // count Smart Object opens for the summary (Step 5)
+    CSV_RENDERS = 0;  // count distinct renders for the summary (Step 6 cache visibility)
 
     var retVal = { count: 0, error: false };
     var failures = [];   // hard errors (save/folder failures)
@@ -1359,11 +1374,21 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     try {
         for (var je = 0; je < jobs.length && !userCancelled; je++) {
             var job = jobs[je];
-            for (var re = 0; re < job.rows.length; re++) {
-                var row = job.rows[re];
-                if (isDrillPath(row.path)) {
-                    // Drill row: reuse the open chain if its prefix matches, else (re)open it.
-                    var segs = splitDrillSegments(row.path);
+            for (var re = 0; re < job.rows.length; ) {
+                // Gather the run of consecutive rows that share one render (same Path + Width +
+                // Height + Padding + Mode). They differ only in output Filename, so the asset is
+                // rendered once and saved to every destination in the run (Step 6). A size change
+                // breaks the run, so those rows render independently.
+                var row0 = job.rows[re];
+                var runKey = renderKey(row0);
+                var runRows = [row0];
+                var rr = re + 1;
+                while (rr < job.rows.length && renderKey(job.rows[rr]) === runKey) {
+                    runRows.push(job.rows[rr]); rr++;
+                }
+                if (isDrillPath(row0.path)) {
+                    // Drill run: reuse the open chain if its prefix matches, else (re)open it.
+                    var segs = splitDrillSegments(row0.path);
                     var prefixKey = drillPrefixKey(segs);
                     var finalSeg = segs[segs.length - 1];
                     var chainOk = true;
@@ -1371,8 +1396,8 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                         closeOpenChain(); // restores the parent as active doc
                         var res = openDrillChain(segs.slice(0, segs.length - 1), jobRoot(job), prefixKey);
                         if (res.errorMsg) {
-                            if (res.isFailure) { failures.push("\"" + row.path + "\": " + res.errorMsg); retVal.error = true; }
-                            else { warnings.push("\"" + row.path + "\": " + res.errorMsg + " -- skipped"); }
+                            if (res.isFailure) { failures.push("\"" + row0.path + "\": " + res.errorMsg); retVal.error = true; }
+                            else { warnings.push("\"" + row0.path + "\": " + res.errorMsg + " -- skipped"); }
                             chainOk = false;
                         } else {
                             openChain = res;
@@ -1383,29 +1408,30 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                             app.activeDocument = openChain.innermost; // defensive: export funcs act on active doc
                             var dtarget = resolveCsvPath(finalSeg, openChain.innermost);
                             if (!dtarget) {
-                                warnings.push("\"" + row.path + "\": \"" + finalSeg + "\" not found inside Smart Object -- skipped");
+                                warnings.push("\"" + row0.path + "\": \"" + finalSeg + "\" not found inside Smart Object -- skipped");
                             } else if (dtarget.typename === "LayerSet") {
-                                exportFlattenedFolder(dtarget, row, job.folderName, retVal, failures, warnings, ext);
+                                exportFlattenedFolder(dtarget, runRows, job.folderName, retVal, failures, warnings, ext);
                             } else {
-                                exportSingleLayer(dtarget, row, job.folderName, retVal, failures, warnings, ext);
+                                exportSingleLayer(dtarget, runRows, job.folderName, retVal, failures, warnings, ext);
                             }
                         } catch (eDrill) {
-                            failures.push("\"" + row.path + "\": " + eDrill.message); retVal.error = true;
+                            failures.push("\"" + row0.path + "\": " + eDrill.message); retVal.error = true;
                         }
                     }
                 } else {
                     closeOpenChain(); // a normal row must run against the parent document
                     var root = jobRoot(job);
-                    var target = root ? resolveCsvPath(row.path, root) : null;
+                    var target = root ? resolveCsvPath(row0.path, root) : null;
                     if (target) {
                         if (target.typename === "LayerSet") {
-                            exportFlattenedFolder(target, row, job.folderName, retVal, failures, warnings, ext);
+                            exportFlattenedFolder(target, runRows, job.folderName, retVal, failures, warnings, ext);
                         } else {
-                            exportSingleLayer(target, row, job.folderName, retVal, failures, warnings, ext);
+                            exportSingleLayer(target, runRows, job.folderName, retVal, failures, warnings, ext);
                         }
                     }
                 }
-                done++;
+                done += runRows.length;
+                re = rr;
                 if (progressBarWindow) {
                     updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
                     repaintProgressBar(progressBarWindow);
@@ -1423,9 +1449,9 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                     if (userCancelled) { return; }
                     var srow = sweepRowFor(job.def, filenameField, label);
                     if (ref.typename === "LayerSet") {
-                        exportFlattenedFolder(ref, srow, "", retVal, failures, warnings, ext);
+                        exportFlattenedFolder(ref, [srow], "", retVal, failures, warnings, ext);
                     } else {
-                        exportSingleLayer(ref, srow, "", retVal, failures, warnings, ext);
+                        exportSingleLayer(ref, [srow], "", retVal, failures, warnings, ext);
                     }
                     done++;
                     if (progressBarWindow) {
@@ -1478,6 +1504,9 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     msg += section("Warnings", warnings);
     msg += "\n\nTiming:  duplicate " + formatMs(dupDurationMs) + "   +   export " + exportDurationStr;
     if (soOpens && soOpens > 0) { msg += "\nSmart Object opens: " + soOpens; }
+    if (CSV_RENDERS > 0 && CSV_RENDERS < count) {
+        msg += "\nRenders: " + CSV_RENDERS + " (saved " + count + " files -- " + (count - CSV_RENDERS) + " reused a cached render)";
+    }
     var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0);
     alert(msg, "CSV Export Summary", isError);
 }
@@ -1552,6 +1581,10 @@ function isSmartObjectLayer(ref) {
 // Count of Smart Object "Edit Contents" opens performed during a run (reported in the summary
 // so Step 5's "open each SO once" win is visible). Reset at the top of runCsvManifest.
 var CSV_SO_OPENS = 0;
+// Count of distinct renders performed during a run (one per exported asset, before it fans out
+// to its destinations). With Step 6 multi-destination, renders < saved files -- the difference
+// is what caching saved. Reset at the top of runCsvManifest; bumped in saveRenderToDestinations.
+var CSV_RENDERS = 0;
 // Open a Smart Object's contents as a new (active) document -- the DOM has no method for this,
 // so it is the "Edit Contents" command via ActionManager. The SO layer must be the active
 // layer first. Returns the newly opened contents document (now app.activeDocument).
