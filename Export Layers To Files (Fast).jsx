@@ -1022,6 +1022,56 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
     }
 }
 
+// Export a "::" drill row: open the Smart Object named by the prefix, resolve the remainder
+// INSIDE its contents with the same resolver, export it (layer -> single, group -> flattened),
+// then close the contents WITHOUT saving so nothing is written back to the SO or the source.
+// Step 2 handles exactly one level (prefix "::" remainder); nested chains are Step 4. The
+// existing export functions act on app.activeDocument, which is the opened SO document here, so
+// they work unchanged -- the export happens at the SO's native (internal) resolution.
+function exportDrillRow(row, root, folderName, retVal, failures, warnings, ext) {
+    var label = row.path;
+    var segs = splitDrillSegments(row.path);
+    if (segs.length !== 2) {
+        failures.push("\"" + label + "\": nested SO drilling (multiple \"::\") not yet supported");
+        retVal.error = true;
+        return;
+    }
+    var soLayer = root ? resolveCsvPath(segs[0], root) : null;
+    if (!soLayer) {
+        warnings.push("\"" + label + "\": SO prefix \"" + segs[0] + "\" did not resolve -- skipped");
+        return;
+    }
+    if (!isSmartObjectLayer(soLayer)) {
+        failures.push("\"" + label + "\": prefix \"" + segs[0] + "\" is not a Smart Object");
+        retVal.error = true;
+        return;
+    }
+    var parentDoc = app.activeDocument;
+    var soDoc = null;
+    try {
+        soDoc = openSmartObjectContents(soLayer);
+        // The SO contents may carry an opaque Background layer; demote it so isolation can hide
+        // it and transparency is preserved -- exactly what the main duplicate does. Safe: the
+        // contents doc is closed without saving.
+        neutralizeBackgroundLayer();
+        var target = resolveCsvPath(segs[1], soDoc);
+        if (!target) {
+            warnings.push("\"" + label + "\": \"" + segs[1] + "\" not found inside Smart Object -- skipped");
+        } else if (target.typename === "LayerSet") {
+            exportFlattenedFolder(target, row, folderName, retVal, failures, warnings, ext);
+        } else {
+            exportSingleLayer(target, row, folderName, retVal, failures, warnings, ext);
+        }
+    } catch (e) {
+        failures.push("\"" + label + "\": " + e.message);
+        retVal.error = true;
+    } finally {
+        if (soDoc) { try { closeSmartObjectContents(soDoc); } catch (eClose) { } }
+        // Defensively restore the parent as the active document for the next row.
+        try { app.activeDocument = parentDoc; } catch (eAct) { }
+    }
+}
+
 // ----- default: sweep helpers (additive; they only READ the tree and CALL the existing
 // export functions -- they never modify exportSingleLayer/exportFlattenedFolder) -----
 
@@ -1223,7 +1273,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
             var rowV = jobV.rows[rv];
             // Resolve the FIRST drill segment only. For a non-"::" path this is the whole path,
             // so the call is byte-for-byte identical to today. For a "::" path it lands on the
-            // prefix that Step 2 will eventually open and drill into.
+            // prefix (the Smart Object) that the export pass opens and drills into.
             var firstSeg = splitDrillSegments(rowV.path)[0];
             var hit = rootV ? resolveCsvPath(firstSeg, rootV) : null;
             if (!hit) {
@@ -1231,10 +1281,19 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                 continue;
             }
             if (isDrillPath(rowV.path)) {
-                // Step 1: recognize drill rows but export nothing from inside the SO yet. A prefix
-                // that is not a Smart Object is a loud error; the run still continues.
+                // A "::" row drills into a Smart Object. Validation only confirms the prefix is
+                // an SO (the remainder is resolved inside the SO at export time -- we don't open
+                // SOs during validation). A prefix that is not an SO is a loud error; the run
+                // continues. The drill row still writes an output file, so run the same
+                // output-collision check as a normal row (but it does NOT claim a sweep asset).
                 if (isSmartObjectLayer(hit)) {
                     drillRecognized.push(folderLabel + rowV.path);
+                    var dkey = csvOutputKey(rowV.filename, jobV.folderName);
+                    if (seenKeys[dkey]) {
+                        collisions.push(folderLabel + rowV.path + " -> \"" + rowV.filename + "\" overwrites " + seenKeys[dkey]);
+                    } else {
+                        seenKeys[dkey] = folderLabel + rowV.path;
+                    }
                 } else {
                     drillBadPrefix.push(folderLabel + rowV.path +
                         "  (prefix \"" + firstSeg + "\" is not a Smart Object)");
@@ -1293,24 +1352,19 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
             var job = jobs[je];
             for (var re = 0; re < job.rows.length; re++) {
                 var row = job.rows[re];
-                // Step 1: "::" rows are recognized in the summary but not yet exported. Skipping
-                // here also prevents a drill row from wrongly exporting the SO layer itself.
-                if (isDrillPath(row.path)) {
-                    done++;
-                    if (progressBarWindow) {
-                        updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
-                        repaintProgressBar(progressBarWindow);
-                        if (userCancelled) { break; }
-                    }
-                    continue;
-                }
                 var root = jobRoot(job);
-                var target = root ? resolveCsvPath(row.path, root) : null;
-                if (target) {
-                    if (target.typename === "LayerSet") {
-                        exportFlattenedFolder(target, row, job.folderName, retVal, failures, warnings, ext);
-                    } else {
-                        exportSingleLayer(target, row, job.folderName, retVal, failures, warnings, ext);
+                // Step 2: a "::" row drills into the Smart Object named by the prefix, exports
+                // the remainder from inside its contents, and closes it without saving.
+                if (isDrillPath(row.path)) {
+                    exportDrillRow(row, root, job.folderName, retVal, failures, warnings, ext);
+                } else {
+                    var target = root ? resolveCsvPath(row.path, root) : null;
+                    if (target) {
+                        if (target.typename === "LayerSet") {
+                            exportFlattenedFolder(target, row, job.folderName, retVal, failures, warnings, ext);
+                        } else {
+                            exportSingleLayer(target, row, job.folderName, retVal, failures, warnings, ext);
+                        }
                     }
                 }
                 done++;
@@ -1380,7 +1434,7 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     msg += section("Unresolved rows (skipped)", unresolvedRows);
     msg += section("Errors", failures);
     msg += section("Duplicate-name overwrites", collisions);
-    msg += section("SO-drill rows (recognized — not yet exported)", drillRecognized);
+    msg += section("SO-drill rows (drilled into a Smart Object)", drillRecognized);
     msg += section("Warnings", warnings);
     msg += "\n\nTiming:  duplicate " + formatMs(dupDurationMs) + "   +   export " + exportDurationStr;
     var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0);
@@ -1453,6 +1507,20 @@ function isDrillPath(pathStr) { return String(pathStr).indexOf("::") !== -1; }
 // (returns undefined -> not an SO); the try/catch guards any ref that lacks the property.
 function isSmartObjectLayer(ref) {
     try { return ref && ref.kind === LayerKind.SMARTOBJECT; } catch (e) { return false; }
+}
+// Open a Smart Object's contents as a new (active) document -- the DOM has no method for this,
+// so it is the "Edit Contents" command via ActionManager. The SO layer must be the active
+// layer first. Returns the newly opened contents document (now app.activeDocument).
+function openSmartObjectContents(soLayer) {
+    app.activeDocument.activeLayer = soLayer;
+    executeAction(stringIDToTypeID("placedLayerEditContents"), undefined, DialogModes.NO);
+    return app.activeDocument;
+}
+// Close an opened Smart Object contents document WITHOUT saving, so no edit is ever written
+// back to the Smart Object (or the source PSD). displayDialogs is NO during the run, so this
+// never prompts. The active document returns to the parent on close.
+function closeSmartObjectContents(soDoc) {
+    soDoc.close(SaveOptions.DONOTSAVECHANGES);
 }
 
 // Resolve a slash-separated CSV path to a live ArtLayer or LayerSet (or null), read
