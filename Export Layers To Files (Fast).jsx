@@ -1972,7 +1972,22 @@ function parseCsvFile(filePath) {
                 continue;
             }
 
-            current.rows.push({ width: w, height: h, padding: p, filename: fn, mode: mode, path: pathStr });
+            // Multi-value Filename (Step 7): a ";"-separated list expands into consecutive
+            // duplicate rows -- same Path + size, one per output name -- which the export cache
+            // renders once and saves to each destination (Step 6). A Filename with no ";" yields
+            // exactly one row, unchanged. Empty entries (";;", trailing ";") are skipped.
+            var fnParts = fn.split(";");
+            var pushedAny = false;
+            for (var fi = 0; fi < fnParts.length; fi++) {
+                var oneName = csvTrim(fnParts[fi]);
+                if (oneName.length === 0) { continue; }
+                current.rows.push({ width: w, height: h, padding: p, filename: oneName, mode: mode, path: pathStr });
+                pushedAny = true;
+            }
+            if (!pushedAny) {
+                skipped.push("line " + lineNum + ": Filename is required");
+                continue;
+            }
         }
         f.close();
     } catch (e) {
