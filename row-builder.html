@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV Row Builder — Export Layers To Files</title>
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b24; --panel2:#1d242f; --line:#2a3342;
+  --text:#dbe2ec; --dim:#8b97a8; --accent:#4fc3f7; --accent2:#ffb74d;
+  --good:#81c784; --bad:#e57373; --code:#0a0d12;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
+.wrap{max-width:1060px;margin:0 auto;padding:24px 20px 80px}
+h1{font-size:1.5rem;margin:6px 0 2px}
+h1 .sub{color:var(--dim);font-size:.9rem;font-weight:400;display:block}
+h2{color:#fff;font-size:1.05rem;margin-bottom:10px}
+h3{color:var(--accent);font-size:.92rem;margin:12px 0 6px}
+code,pre,textarea,input[type=text],.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.85em}
+code{background:var(--code);padding:2px 6px;border-radius:5px;color:var(--accent2)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;margin:10px 0;color:#c8d3e0;line-height:1.5}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.grid2{grid-template-columns:1fr}}
+.pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:2px 10px;font-size:.78rem;color:var(--dim);margin:2px 3px 2px 0}
+.good{color:var(--good)} .bad{color:var(--bad)} .dim{color:var(--dim)} .amber{color:var(--accent2)}
+textarea{width:100%;min-height:270px;background:var(--code);color:#c8d3e0;border:1px solid var(--line);border-radius:8px;padding:12px;resize:vertical;line-height:1.5;white-space:pre;overflow:auto}
+input[type=text],input[type=number]{background:var(--code);color:#dbe2ec;border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+input:focus,textarea:focus{outline:1px solid var(--accent)}
+label{display:block;font-size:.78rem;color:var(--dim);margin-bottom:3px}
+.formrow{display:grid;grid-template-columns:90px 90px 90px 1fr;gap:10px;margin-bottom:10px}
+.formrow2{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px}
+@media(max-width:720px){.formrow{grid-template-columns:1fr 1fr}.formrow2{grid-template-columns:1fr}}
+button{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;transition:.15s}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.primary{background:var(--accent);color:#04121b;border-color:var(--accent);font-weight:600}
+button.primary:hover{filter:brightness(1.1);color:#04121b}
+button.mini{padding:2px 8px;font-size:.78rem;border-radius:6px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:none;border-radius:0;padding:8px 16px}
+.seg button.on{background:var(--accent);color:#04121b;font-weight:600}
+.tree{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 6px;max-height:340px;overflow:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.82rem}
+.tree div{padding:2px 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.tree div:hover{background:var(--panel2)}
+.tree div.hit{background:rgba(79,195,247,.18);outline:1px solid var(--accent)}
+.tree .f::before{content:"📁 "} .tree .l::before{content:"🖼 "} .tree .so::before{content:"🧩 "}
+.tree .so{color:var(--accent2)}
+.outtree{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 6px;min-height:120px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.82rem}
+.outtree div{padding:1px 8px;white-space:nowrap}
+.outtree .f::before{content:"📁 "} .outtree .file::before{content:"🖼 "}
+.csvline{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;white-space:nowrap;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.9rem;margin:8px 0}
+.csvline .n{color:#9ccc65} .csvline .fn{color:var(--accent2)} .csvline .m{color:#ce93d8} .csvline .p{color:var(--accent)} .csvline .q{color:#5c6b7f}
+.readout{border-left:3px solid var(--accent);background:var(--panel2);border-radius:0 8px 8px 0;padding:10px 14px;margin:8px 0;font-size:.9rem}
+.readout.err{border-left-color:var(--bad)}
+.explain{color:var(--dim);font-size:.88rem;margin-top:6px}
+.explain b{color:var(--text)}
+.sizewrap{position:relative;background:var(--code);border:1px solid var(--line);border-radius:8px;height:270px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.szCanvas{position:absolute;border:1px solid var(--accent);background:rgba(79,195,247,.05)}
+.szPad{position:absolute;border:1px dashed rgba(255,183,77,.55)}
+.szAsset{position:absolute;background:linear-gradient(135deg,rgba(129,199,132,.75),rgba(79,195,247,.55));border:1px solid var(--good);display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#04121b;font-weight:600;overflow:hidden}
+.szLabel{position:absolute;font-size:.7rem;color:var(--dim);font-family:"SF Mono",Menlo,Consolas,monospace}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.85rem}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{background:var(--panel2);color:var(--accent);font-weight:600}
+td.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.8rem}
+.badge{display:inline-block;border-radius:10px;padding:1px 8px;font-size:.72rem;margin-left:6px;white-space:nowrap}
+.badge.cache{background:rgba(129,199,132,.15);color:var(--good);border:1px solid rgba(129,199,132,.4)}
+.badge.hint{background:rgba(255,183,77,.12);color:var(--accent2);border:1px solid rgba(255,183,77,.4)}
+.btnbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.note{font-size:.78rem;color:var(--dim);margin-top:6px}
+.flash{color:var(--good);font-size:.8rem;margin-left:6px;opacity:0;transition:opacity .2s}
+.flash.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CSV Row Builder <span class="sub">for “Export Layers To Files (Fast)” — build a row, see what it does, preview the export</span></h1>
+
+  <!-- ============ 1. LAYER TREE ============ -->
+  <div class="card">
+    <h2>1 · Your layer tree <span class="dim" style="font-weight:400;font-size:.8rem">(edit to match your PSD — the Path checks against this)</span></h2>
+    <div class="grid2">
+      <div>
+        <label>Indented text — 2 spaces per level · <code>*</code> = Smart Object · <code>/</code> = group (or just give it children)</label>
+        <textarea id="treeText" spellcheck="false"></textarea>
+        <div class="btnbar">
+          <button id="resetTree">Reset to demo tree</button>
+          <span class="note">saved automatically in this browser</span>
+        </div>
+      </div>
+      <div>
+        <label>Click a node to build its Path</label>
+        <div class="tree" id="treeView"></div>
+        <div class="note">🧩 Smart Object — entered with <code>::</code> &nbsp;·&nbsp; 📁 group — entered with <code>/</code> &nbsp;·&nbsp; 🖼 layer</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. ROW FORM ============ -->
+  <div class="card">
+    <h2>2 · Build a row</h2>
+    <div class="formrow">
+      <div><label>Width px <span class="dim">(blank = natural)</span></label><input type="number" id="fW" min="0" placeholder="—"></div>
+      <div><label>Height px</label><input type="number" id="fH" min="0" placeholder="—"></div>
+      <div><label>Padding px</label><input type="number" id="fP" min="0" placeholder="0"></div>
+      <div><label>Mode</label>
+        <span class="seg"><button id="modeFit" class="on">fit</button><button id="modeCanvas">canvas</button></span>
+      </div>
+    </div>
+    <div class="formrow2">
+      <div style="grid-column:1/-1"><label>Filename — output name(s), no extension · <code>subfolder/name</code> for output folders · <code>;</code> separates multiple destinations (renders once, saves each)</label>
+      <input type="text" id="fName" placeholder="SO/EEE  or  a/name1;b/name2" spellcheck="false"></div>
+    </div>
+    <div class="formrow2">
+      <div style="grid-column:1/-1"><label>Path — the source layer/group · <code>/</code> descends groups · <code>[n]</code> = n-th child (top = 0) · <code>::</code> drills into a Smart Object</label>
+      <input type="text" id="fPath" placeholder="EFGH::LMNO/LLL" spellcheck="false"></div>
+    </div>
+  </div>
+
+  <!-- ============ 3. LIVE PREVIEW ============ -->
+  <div class="card">
+    <h2>3 · The row &amp; what it does</h2>
+    <div class="csvline" id="csvLine"></div>
+    <div class="btnbar">
+      <button id="copyLine">Copy line</button>
+      <button id="addRow" class="primary">Add to manifest ↓</button>
+      <span class="flash" id="lineFlash">copied ✓</span>
+    </div>
+    <div class="readout" id="readout"></div>
+    <div class="explain" id="explain"></div>
+  </div>
+
+  <!-- ============ 4. EXPORT PREVIEW ============ -->
+  <div class="card">
+    <h2>4 · Export preview</h2>
+    <div class="grid2">
+      <div>
+        <h3>Files on disk (export folder)</h3>
+        <div class="outtree" id="outTree"></div>
+      </div>
+      <div>
+        <h3>Image size — <span id="szTitle" class="amber"></span></h3>
+        <div class="sizewrap" id="sizeWrap"></div>
+        <div class="btnbar">
+          <label style="margin:0">mock asset:</label>
+          <input type="number" id="aW" value="800" min="1" style="width:80px">
+          <span class="dim">×</span>
+          <input type="number" id="aH" value="500" min="1" style="width:80px">
+          <span class="note">px — pretend size of the layer’s pixels, just for this preview</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 5. MANIFEST ============ -->
+  <div class="card">
+    <h2>5 · Manifest</h2>
+    <div id="rowsTableWrap"></div>
+    <h3>CSV</h3>
+    <pre id="csvOut" class="mono" style="max-height:260px;overflow:auto"></pre>
+    <div class="btnbar">
+      <button id="copyCsv" class="primary">Copy CSV</button>
+      <button id="dlCsv">Download .csv</button>
+      <button id="clearRows">Clear all rows</button>
+      <span class="flash" id="csvFlash">copied ✓</span>
+    </div>
+    <div class="note">Rows marked <span class="badge cache">1 render → N files</span> share one render because they sit together with the same Path + size. The script only groups <b>consecutive</b> rows.</div>
+  </div>
+
+  <div class="note" style="text-align:center">Companion to <code>export_template.csv</code> &amp; <code>script-breakdown.html</code> · everything runs locally, nothing leaves this page</div>
+</div>
+
+<script>
+/* ================= CORE (pure logic — mirrors the .jsx semantics) ================= */
+// #core-start
+
+function coreTrim(s){ return String(s).replace(/^\s+/,'').replace(/\s+$/,''); }
+
+// Parse indented text into {name,type:'l'|'f'|'so',children[]} under a synthetic root.
+// 2 spaces = one level (tabs count as one level). "*" suffix = Smart Object, "/" suffix = group.
+function parseTreeText(text){
+  var root={name:'(document root)',type:'f',children:[]};
+  var stack=[{node:root,depth:-1}];
+  var lines=String(text).split('\n');
+  for(var i=0;i<lines.length;i++){
+    var raw=lines[i]; if(coreTrim(raw).length===0) continue;
+    var m=raw.match(/^[\t ]*/)[0];
+    var depth=0;
+    for(var c=0;c<m.length;c++){ depth += (m[c]==='\t') ? 2 : 1; }
+    depth=Math.floor(depth/2);
+    var name=coreTrim(raw), type='l';
+    if(/\*$/.test(name)){ type='so'; name=coreTrim(name.slice(0,-1)); }
+    else if(/\/$/.test(name)){ type='f'; name=coreTrim(name.slice(0,-1)); }
+    if(!name.length) continue;
+    var node={name:name,type:type,children:[]};
+    while(stack.length>1 && stack[stack.length-1].depth>=depth) stack.pop();
+    var parent=stack[stack.length-1].node;
+    if(parent.type==='l') parent.type='f';           // a layer that gains children becomes a group
+    parent.children.push(node);
+    stack.push({node:node,depth:depth});
+  }
+  // a plain node that ended up with children is a group
+  (function fix(n){ if(n.children.length && n.type==='l') n.type='f'; for(var i=0;i<n.children.length;i++) fix(n.children[i]); })(root);
+  return root;
+}
+
+// Mirror of resolveCsvPath: one "/" segment walk inside a container node.
+// Only groups ('f') descend; returns {node} or {error}.
+function resolveSlashPath(pathStr, container){
+  var segs=String(pathStr).split('/');
+  var current=container, result=null;
+  for(var i=0;i<segs.length;i++){
+    var seg=coreTrim(segs[i]); if(!seg.length) continue;
+    if(!current || !current.children || (current.type!=='f' && current!==container)) return {error:'"'+seg+'" — cannot descend into a layer'};
+    var child=null;
+    if(/^\[\d+\]$/.test(seg)){
+      var idx=parseInt(seg.substring(1,seg.length-1),10);
+      if(idx>=0 && idx<current.children.length) child=current.children[idx];
+    }else{
+      for(var c=0;c<current.children.length;c++){ if(coreTrim(current.children[c].name)===seg){ child=current.children[c]; break; } }
+    }
+    if(!child) return {error:'"'+seg+'" not found'};
+    result=child;
+    current=(child.type==='f')?child:null;   // SO or layer cannot be descended with "/"
+  }
+  return result?{node:result}:{error:'empty path'};
+}
+
+// Full Path resolution with "::" drilling. Returns
+// {ok:true,target,hops:[soNode...]} | {ok:false,loud:bool,msg}
+function resolveFullPath(pathStr, root){
+  var p=coreTrim(String(pathStr));
+  if(!p.length) return {ok:false,loud:false,msg:'Path is empty'};
+  var drillSegs=p.split('::');
+  for(var i=0;i<drillSegs.length;i++) drillSegs[i]=coreTrim(drillSegs[i]);
+  var container=root, hops=[];
+  for(var s=0;s<drillSegs.length;s++){
+    var r=resolveSlashPath(drillSegs[s],container);
+    if(r.error) return {ok:false,loud:false,msg:'segment '+(s+1)+': '+r.error+' — row skipped & reported'};
+    var isLast=(s===drillSegs.length-1);
+    if(isLast) return {ok:true,target:r.node,hops:hops};
+    if(r.node.type!=='so') return {ok:false,loud:true,msg:'"'+drillSegs[s]+'" is not a Smart Object — cannot drill deeper (loud error, run continues)'};
+    hops.push(r.node);
+    container=r.node;   // next segment resolves inside the SO's contents
+  }
+  return {ok:false,loud:false,msg:'Path is empty'};
+}
+
+// Split a Filename field on ";" into destination names (Step 7). Empty entries dropped.
+function splitDestinations(fn){
+  var parts=String(fn).split(';'), out=[];
+  for(var i=0;i<parts.length;i++){ var t=coreTrim(parts[i]); if(t.length) out.push(t); }
+  return out;
+}
+
+// Mirror of csvOutputParts: split one destination on its LAST "/" -> {folders[], name}
+function outputParts(dest){
+  var idx=String(dest).lastIndexOf('/');
+  var folders=[], name=dest;
+  if(idx>=0){
+    name=coreTrim(dest.substring(idx+1));
+    var fparts=dest.substring(0,idx).split('/');
+    for(var i=0;i<fparts.length;i++){ var f=coreTrim(fparts[i]); if(f.length) folders.push(f); }
+  }
+  if(!name.length) name='untitled';
+  return {folders:folders,name:name};
+}
+
+// CSV field quoting: wrap in quotes when it holds a comma or a quote ("" escapes).
+function csvField(s){
+  s=String(s);
+  if(s.indexOf(',')>=0 || s.indexOf('"')>=0) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+
+// Build the exact CSV line from form values (strings; ''/0 = natural).
+function buildRowLine(row){
+  return [row.w,row.h,row.p,csvField(row.fn),row.mode,row.path].join(',');
+}
+
+// Step 6 render key: rows agreeing on all of this share ONE render.
+function rowRenderKey(row){
+  var w=row.w===''?0:+row.w, h=row.h===''?0:+row.h, p=row.p===''?0:+row.p;
+  return row.path+'|'+w+'|'+h+'|'+p+'|'+row.mode;
+}
+
+// Fit/canvas output geometry for the preview (mirrors applyCsvSizing / resizeImageToFit).
+// Returns {natural:bool, canvasW,canvasH, assetW,assetH} in output pixels.
+function sizingGeometry(w,h,p,mode,aw,ah){
+  w=+w||0; h=+h||0; p=Math.max(+p||0,0);
+  if(!(w>0&&h>0)) return {natural:true,canvasW:aw,canvasH:ah,assetW:aw,assetH:ah};
+  if(mode==='canvas') return {natural:false,canvasW:w,canvasH:h,assetW:aw,assetH:ah}; // 1:1 px, overflow cropped
+  var safeW=Math.max(w-p*2,1), safeH=Math.max(h-p*2,1);
+  var scale=Math.min(safeW/aw,safeH/ah);
+  return {natural:false,canvasW:w,canvasH:h,assetW:Math.round(aw*scale),assetH:Math.round(ah*scale)};
+}
+// #core-end
+/* ================= UI ================= */
+
+var DEMO_TREE=[
+  '111','222','333','444',
+  'ABCD/','  AAA','  BBB','  CCC','  DDD',
+  'EFGH*','  EEE','  FFF','  GGG','  HHH',
+  '  LMNO/','    LLL','    MMM','    NNN','    OOO',
+  '  000*','    000','    111','    222','    333','    BLACK',
+  'Background'
+].join('\n');
+
+var $=function(id){return document.getElementById(id);};
+var treeRoot=null, mode='fit', nodeEls=[];
+
+function loadState(){
+  try{
+    $('treeText').value=localStorage.getItem('rb_tree')||DEMO_TREE;
+    var rows=JSON.parse(localStorage.getItem('rb_rows')||'[]');
+    return rows;
+  }catch(e){ $('treeText').value=DEMO_TREE; return []; }
+}
+var manifestRows=loadState();
+
+function saveState(){
+  try{
+    localStorage.setItem('rb_tree',$('treeText').value);
+    localStorage.setItem('rb_rows',JSON.stringify(manifestRows));
+  }catch(e){}
+}
+
+/* ---- tree ---- */
+function pathForChain(chain){ // chain: array of nodes root->target (excluding root)
+  var s='';
+  for(var i=0;i<chain.length;i++){
+    if(i===0){ s=chain[i].name; continue; }
+    s += (chain[i-1].type==='so') ? '::' : '/';
+    s += chain[i].name;
+  }
+  return s;
+}
+function renderTree(){
+  treeRoot=parseTreeText($('treeText').value);
+  var el=$('treeView'); el.innerHTML=''; nodeEls=[];
+  (function walk(node,depth,chain){
+    for(var i=0;i<node.children.length;i++){
+      (function(child){
+        var c2=chain.concat([child]);
+        var d=document.createElement('div');
+        d.className=child.type;
+        d.style.paddingLeft=(depth*20+6)+'px';
+        d.textContent=child.name+(child.type==='so'?'  (Smart Object)':(child.type==='f'?'  (group)':''));
+        d.dataset.path=pathForChain(c2);
+        d.onclick=function(){ $('fPath').value=d.dataset.path; refresh(); };
+        el.appendChild(d); nodeEls.push(d);
+        walk(child,depth+1,c2);
+      })(node.children[i]);
+    }
+  })(treeRoot,0,[]);
+}
+
+/* ---- form state ---- */
+function currentRow(){
+  return {
+    w:coreTrim($('fW').value), h:coreTrim($('fH').value),
+    p:coreTrim($('fP').value)||'0',
+    fn:coreTrim($('fName').value), mode:mode, path:coreTrim($('fPath').value)
+  };
+}
+
+/* ---- preview ---- */
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function refresh(){
+  var row=currentRow();
+  // CSV line, colorized
+  var fnField=csvField(row.fn||'…');
+  $('csvLine').innerHTML=
+    '<span class="n">'+esc(row.w||'0')+'</span><span class="q">,</span>'+
+    '<span class="n">'+esc(row.h||'0')+'</span><span class="q">,</span>'+
+    '<span class="n">'+esc(row.p||'0')+'</span><span class="q">,</span>'+
+    '<span class="fn">'+esc(fnField)+'</span><span class="q">,</span>'+
+    '<span class="m">'+esc(row.mode)+'</span><span class="q">,</span>'+
+    '<span class="p">'+esc(row.path||'…')+'</span>';
+
+  // resolution readout
+  for(var i=0;i<nodeEls.length;i++) nodeEls[i].classList.remove('hit');
+  var ro=$('readout'), ex=$('explain');
+  var warnComma=(row.path.indexOf(',')>=0)?'<div class="bad">⚠ a comma in Path breaks the CSV — rename the layer or use [n]</div>':'';
+  if(!row.path){ ro.className='readout'; ro.innerHTML='<span class="dim">Type a Path or click a node in the tree…</span>'; ex.innerHTML=''; drawOutTree(row); drawSize(row); return; }
+  var res=resolveFullPath(row.path,treeRoot);
+  if(res.ok){
+    // highlight
+    for(var j=0;j<nodeEls.length;j++){ if(nodeEls[j].dataset.path===row.path){ nodeEls[j].classList.add('hit'); break; } }
+    var t=res.target;
+    var kind = t.type==='f' ? 'GROUP "'+esc(t.name)+'" → the whole group flattens to ONE image'
+             : t.type==='so' ? 'SMART OBJECT "'+esc(t.name)+'" → exported flattened, as one image'
+             : 'LAYER "'+esc(t.name)+'" → exported as a single image';
+    ro.className='readout';
+    ro.innerHTML='<span class="good">✔ resolves to '+kind+'</span>'+warnComma;
+    // explanation
+    var lines=[];
+    if(res.hops.length){
+      var hopNames=[]; for(var hn=0;hn<res.hops.length;hn++) hopNames.push('<b>'+esc(res.hops[hn].name)+'</b>');
+      lines.push('Opens Smart Object '+hopNames.join(' → then ')+' (edit-contents, closed without saving).');
+    }
+    var g=sizingGeometry(row.w,row.h,row.p,row.mode,1,1);
+    lines.push(g.natural ? 'Exports at <b>natural size</b> (cropped to its own pixels).'
+      : row.mode==='canvas' ? 'Placed on an exact <b>'+esc(row.w)+'×'+esc(row.h)+'</b> canvas at original scale — overflow is cropped, padding ignored.'
+      : 'Scaled to fit <b>'+esc(row.w)+'×'+esc(row.h)+'</b>'+((+row.p>0)?' with <b>'+esc(row.p)+'px</b> padding':'')+', centered on that exact canvas.');
+    var dests=splitDestinations(row.fn);
+    if(dests.length>1) lines.push('Saves <b>'+dests.length+' files</b> — rendered <b>once</b>, saved to each destination.');
+    else if(dests.length===1) lines.push('Saves 1 file.');
+    else lines.push('<span class="bad">Filename is required.</span>');
+    ex.innerHTML=lines.join('<br>');
+  }else{
+    ro.className='readout err';
+    ro.innerHTML='<span class="bad">✘ '+esc(res.msg)+'</span>'+warnComma;
+    ex.innerHTML=res.loud
+      ? 'Every segment before a <code>::</code> must be a 🧩 Smart Object. Groups are entered with <code>/</code> instead.'
+      : 'Check spelling against the tree above — matching is case-sensitive (surrounding spaces are trimmed).';
+  }
+  drawOutTree(row); drawSize(row);
+  saveState();
+}
+
+/* ---- output folder tree ---- */
+function drawOutTree(row){
+  var el=$('outTree'); el.innerHTML='';
+  var dests=splitDestinations(row.fn);
+  if(!dests.length){ el.innerHTML='<div class="dim" style="padding:6px 8px">— set a Filename —</div>'; return; }
+  var rootFolder={};                       // nested {folders:{}, files:[]}
+  for(var i=0;i<dests.length;i++){
+    var pp=outputParts(dests[i]), cur=rootFolder;
+    for(var f=0;f<pp.folders.length;f++){
+      cur.folders=cur.folders||{};
+      cur=cur.folders[pp.folders[f]]=cur.folders[pp.folders[f]]||{};
+    }
+    (cur.files=cur.files||[]).push(pp.name+'.png');
+  }
+  var div=document.createElement('div'); div.className='f'; div.textContent='(export folder)'; el.appendChild(div);
+  (function walk(node,depth){
+    var names=Object.keys(node.folders||{}).sort();
+    for(var n=0;n<names.length;n++){
+      var d=document.createElement('div'); d.className='f';
+      d.style.paddingLeft=(depth*20+8)+'px'; d.textContent=names[n];
+      el.appendChild(d);
+      walk(node.folders[names[n]],depth+1);
+    }
+    var files=(node.files||[]);
+    for(var fl=0;fl<files.length;fl++){
+      var df=document.createElement('div'); df.className='file';
+      df.style.paddingLeft=(depth*20+8)+'px'; df.textContent=files[fl];
+      el.appendChild(df);
+    }
+  })(rootFolder,1);
+}
+
+/* ---- sizing mock ---- */
+function drawSize(row){
+  var aw=+$('aW').value||800, ah=+$('aH').value||500;
+  var g=sizingGeometry(row.w,row.h,row.p,row.mode,aw,ah);
+  var wrap=$('sizeWrap'); wrap.innerHTML='';
+  $('szTitle').textContent=g.natural?'natural ('+g.canvasW+'×'+g.canvasH+')':(row.mode+' → '+g.canvasW+'×'+g.canvasH);
+  var availW=wrap.clientWidth-70||420, availH=wrap.clientHeight-56||210;
+  var k=Math.min(availW/g.canvasW,availH/g.canvasH);
+  var cw=Math.max(g.canvasW*k,8), ch=Math.max(g.canvasH*k,8);
+  var cx=(wrap.clientWidth-cw)/2, cy=(wrap.clientHeight-ch)/2;
+  function box(cls,l,t,w,h){var d=document.createElement('div');d.className=cls;d.style.left=l+'px';d.style.top=t+'px';d.style.width=w+'px';d.style.height=h+'px';wrap.appendChild(d);return d;}
+  box('szCanvas',cx,cy,cw,ch);
+  var p=+row.p||0;
+  if(row.mode==='fit'&&p>0&&!g.natural){
+    var pk=p*k; box('szPad',cx+pk,cy+pk,Math.max(cw-2*pk,2),Math.max(ch-2*pk,2));
+  }
+  var awpx=g.assetW*k, ahpx=g.assetH*k;
+  var ax=cx+(cw-awpx)/2, ay=cy+(ch-ahpx)/2;
+  if(row.mode==='canvas'&&!g.natural){
+    // overflow cropped: clip asset box to canvas
+    var vx=Math.max(ax,cx), vy=Math.max(ay,cy);
+    var vr=Math.min(ax+awpx,cx+cw), vb=Math.min(ay+ahpx,cy+ch);
+    var d=box('szAsset',vx,vy,Math.max(vr-vx,2),Math.max(vb-vy,2));
+    if(awpx>cw+1||ahpx>ch+1) d.textContent='cropped';
+    else d.textContent='asset';
+  }else{
+    box('szAsset',ax,ay,Math.max(awpx,2),Math.max(ahpx,2)).textContent='asset';
+  }
+  var lab=document.createElement('div'); lab.className='szLabel';
+  lab.style.left=cx+'px'; lab.style.top=(cy+ch+4)+'px';
+  lab.textContent=g.canvasW+'×'+g.canvasH+(g.natural?' (natural)':'');
+  wrap.appendChild(lab);
+}
+
+/* ---- manifest ---- */
+function renderManifest(){
+  var wrapEl=$('rowsTableWrap');
+  if(!manifestRows.length){ wrapEl.innerHTML='<div class="dim" style="padding:6px 0">No rows yet — build one above and “Add to manifest”.</div>'; $('csvOut').textContent='Width,Height,Padding,Filename,Mode,Path'; saveState(); return; }
+  // cache runs: consecutive rows sharing renderKey
+  var keys=[], firstIdx={};
+  for(var i=0;i<manifestRows.length;i++){ keys.push(rowRenderKey(manifestRows[i])); if(!(keys[i] in firstIdx)) firstIdx[keys[i]]=i; }
+  var html='<table><tr><th>#</th><th>W</th><th>H</th><th>P</th><th>Filename</th><th>Mode</th><th>Path</th><th></th></tr>';
+  for(var r=0;r<manifestRows.length;r++){
+    var row=manifestRows[r];
+    var badge='';
+    var runStart=(r===0||keys[r-1]!==keys[r]);
+    if(runStart){
+      var runLen=1; while(r+runLen<manifestRows.length&&keys[r+runLen]===keys[r]) runLen++;
+      var saves=0; for(var q=0;q<runLen;q++) saves+=splitDestinations(manifestRows[r+q].fn).length;
+      if(runLen>1||saves>1) badge='<span class="badge cache">1 render → '+saves+' files</span>';
+      if(firstIdx[keys[r]]<r) badge+='<span class="badge hint">same render as row '+(firstIdx[keys[r]]+1)+' — move adjacent to share</span>';
+    } else badge='<span class="badge cache">↑ shared</span>';
+    html+='<tr><td>'+(r+1)+'</td><td class="mono">'+esc(row.w||'0')+'</td><td class="mono">'+esc(row.h||'0')+'</td><td class="mono">'+esc(row.p||'0')+'</td>'+
+      '<td class="mono">'+esc(row.fn)+badge+'</td><td class="mono">'+esc(row.mode)+'</td><td class="mono">'+esc(row.path)+'</td>'+
+      '<td style="white-space:nowrap"><button class="mini" onclick="mvRow('+r+',-1)">↑</button> <button class="mini" onclick="mvRow('+r+',1)">↓</button> <button class="mini" onclick="edRow('+r+')">✎</button> <button class="mini" onclick="rmRow('+r+')">✕</button></td></tr>';
+  }
+  html+='</table>';
+  wrapEl.innerHTML=html;
+  var out=['Width,Height,Padding,Filename,Mode,Path'];
+  for(var o=0;o<manifestRows.length;o++) out.push(buildRowLine(manifestRows[o]));
+  $('csvOut').textContent=out.join('\n');
+  saveState();
+}
+function mvRow(i,d){ var j=i+d; if(j<0||j>=manifestRows.length)return; var t=manifestRows[i]; manifestRows[i]=manifestRows[j]; manifestRows[j]=t; renderManifest(); }
+function rmRow(i){ manifestRows.splice(i,1); renderManifest(); }
+function edRow(i){ var r=manifestRows[i]; $('fW').value=r.w; $('fH').value=r.h; $('fP').value=r.p; $('fName').value=r.fn; $('fPath').value=r.path; setMode(r.mode); manifestRows.splice(i,1); renderManifest(); refresh(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+/* ---- wiring ---- */
+function setMode(m){ mode=m; $('modeFit').className=(m==='fit')?'on':''; $('modeCanvas').className=(m==='canvas')?'on':''; }
+$('modeFit').onclick=function(){ setMode('fit'); refresh(); };
+$('modeCanvas').onclick=function(){ setMode('canvas'); refresh(); };
+['fW','fH','fP','fName','fPath','aW','aH'].forEach(function(id){ $(id).addEventListener('input',refresh); });
+$('treeText').addEventListener('input',function(){ renderTree(); refresh(); });
+$('resetTree').onclick=function(){ $('treeText').value=DEMO_TREE; renderTree(); refresh(); };
+$('copyLine').onclick=function(){ copyText(buildRowLine(currentRow()),'lineFlash'); };
+$('copyCsv').onclick=function(){ copyText($('csvOut').textContent,'csvFlash'); };
+$('addRow').onclick=function(){
+  var r=currentRow();
+  if(!r.fn){ alert('Filename is required.'); return; }
+  if(!r.path){ alert('Path is required.'); return; }
+  manifestRows.push(r); renderManifest();
+};
+$('clearRows').onclick=function(){ if(manifestRows.length&&confirm('Remove all '+manifestRows.length+' rows?')){ manifestRows=[]; renderManifest(); } };
+$('dlCsv').onclick=function(){
+  var blob=new Blob([$('csvOut').textContent+'\n'],{type:'text/csv'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='manifest.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(a.href);},500);
+};
+function copyText(t,flashId){
+  function flash(){ var f=$(flashId); f.classList.add('on'); setTimeout(function(){f.classList.remove('on');},1200); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(flash,function(){fallbackCopy(t);flash();}); }
+  else{ fallbackCopy(t); flash(); }
+}
+function fallbackCopy(t){
+  var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta);
+  ta.select(); try{document.execCommand('copy');}catch(e){} document.body.removeChild(ta);
+}
+
+/* ---- init ---- */
+renderTree();
+$('fName').value='SO/EEE';
+$('fPath').value='EFGH::EEE';
+$('fW').value='250'; $('fH').value='250'; $('fP').value='10';
+renderManifest();
+refresh();
+window.addEventListener('resize',function(){ drawSize(currentRow()); });
+</script>
+</body>
+</html>
