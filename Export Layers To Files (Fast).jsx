@@ -898,6 +898,23 @@ function csvOutputFile(filenameField, scopeName, ext) {
     return { file: makeUniqueFileHandle(basePath, ext), error: null };
 }
 
+// Bake a layer's live style (fx) into its pixels in place -- equivalent to the menu command
+// Layer > Rasterize > Layer Style. The DOM has no method for this (RasterizeType has no
+// "layer style" value, and ENTIRELAYER keeps effects live), so it is done via ActionManager
+// on the active layer. A layer with no style makes the command unavailable -> the try/catch
+// turns it into a harmless no-op, so plain layers are unaffected.
+function bakeLayerStyleInPlace(layer) {
+    try {
+        app.activeDocument.activeLayer = layer;
+        var desc = new ActionDescriptor();
+        var ref = new ActionReference();
+        ref.putEnumerated(charIDToTypeID("Lyr "), charIDToTypeID("Ordn"), charIDToTypeID("Trgt"));
+        desc.putReference(charIDToTypeID("null"), ref);
+        desc.putEnumerated(charIDToTypeID("What"), stringIDToTypeID("rasterizeItem"), stringIDToTypeID("layerStyle"));
+        executeAction(stringIDToTypeID("rasterizeLayer"), desc, DialogModes.NO);
+    } catch (eBake) { /* no layer style, or not rasterizable -- leave the layer untouched */ }
+}
+
 // Export one resolved ArtLayer row: isolate the layer (force it AND every ancestor group
 // visible, regardless of stored visibility), crop to its bounds, size per the row, save.
 // Wrapped in store/restore history so the crop/resize are undone; visibility is reset by
@@ -910,6 +927,13 @@ function exportSingleLayer(layer, row, scopeName, retVal, failures, warnings, ex
         layer.visible = true;
         var anc = layer.parent;
         while (anc && anc.typename === "LayerSet") { anc.visible = true; anc = anc.parent; }
+
+        // Bake a live layer style (fx) into real pixels at the document's native scale BEFORE
+        // any crop/resize. Otherwise the effect re-renders at the new canvas size and appears
+        // mis-scaled (seen on canvas mode); baked, it scales as flat pixels with the art.
+        // Done before reading bounds so the baked-in effect extent is included. A layer with no
+        // style makes this a harmless no-op (try/catch); restoreHistory undoes it per row.
+        bakeLayerStyleInPlace(layer);
 
         var b = layer.bounds;
         if (!((b[0] < b[2]) && (b[1] < b[3]))) {
@@ -998,6 +1022,89 @@ function exportFlattenedFolder(ls, row, scopeName, retVal, failures, warnings, e
     }
 }
 
+// ----- default: sweep helpers (additive; they only READ the tree and CALL the existing
+// export functions -- they never modify exportSingleLayer/exportFlattenedFolder) -----
+
+// Copy a container's direct children into a JS array so iteration is stable across the
+// crop/restore the export functions perform per asset.
+function snapshotLayers(container) {
+    var a = [];
+    var L = container.layers;
+    for (var i = 0; i < L.length; i++) { a.push(L[i]); }
+    return a;
+}
+
+// A swept asset is "claimed" when a listed row already targets it (by stable id). Claimed
+// assets -- and, in recursive mode, the whole subtree under a claimed group -- are left to
+// the row and skipped by the sweep.
+function isSweepClaimed(job, layer) {
+    try { return job.claimIds && job.claimIds[layer.id] === true; } catch (e) { return false; }
+}
+
+// True when any layer in group's subtree is claimed. A direct sweep must NOT flatten such a
+// group: the user is handling its contents via listed rows, and flattening would re-include
+// those claimed assets (the listed rows are exported separately, into the block's folder).
+function groupHasClaimedDescendant(group, job) {
+    var kids = group.layers;
+    for (var i = 0; i < kids.length; i++) {
+        var c = kids[i];
+        if (isSweepClaimed(job, c)) { return true; }
+        if (c.typename === "LayerSet" && groupHasClaimedDescendant(c, job)) { return true; }
+    }
+    return false;
+}
+
+// Walk a scope and invoke visit(ref, filenameField, label) for every asset the sweep should
+// export (claimed assets/subtrees excluded). direct: each direct child (groups flatten,
+// layers export), flat names. recursive: descend groups (skip claimed groups), export each
+// leaf layer with a filename that mirrors its group path so same-named leaves don't collide.
+function enumerateSweep(rootContainer, job, visit) {
+    if (!rootContainer) { return; }
+    if (job.def.depth === "direct") {
+        var kids = snapshotLayers(rootContainer);
+        for (var i = 0; i < kids.length; i++) {
+            var c = kids[i];
+            if (isSweepClaimed(job, c)) { continue; }
+            // Don't flatten a child group whose subtree holds a row-claimed asset.
+            if (c.typename === "LayerSet" && groupHasClaimedDescendant(c, job)) { continue; }
+            visit(c, c.name, c.name);
+        }
+    } else {
+        sweepWalk(rootContainer, job, "", visit);
+    }
+}
+function sweepWalk(container, job, prefix, visit) {
+    var kids = snapshotLayers(container);
+    for (var i = 0; i < kids.length; i++) {
+        var c = kids[i];
+        if (isSweepClaimed(job, c)) { continue; } // claimed group: skip AND do not descend
+        if (c.typename === "LayerSet") {
+            sweepWalk(c, job, prefix + c.name + "/", visit);
+        } else {
+            visit(c, prefix + c.name, prefix + c.name);
+        }
+    }
+}
+
+// Build the synthetic row the existing export functions consume for a swept asset, from the
+// block's default rule. trimmed -> natural size (W/H 0); fit/canvas -> W x H, padding 0.
+function sweepRowFor(def, filenameField, label) {
+    return {
+        width: (def.mode === "trimmed") ? 0 : def.w,
+        height: (def.mode === "trimmed") ? 0 : def.h,
+        padding: 0,
+        filename: filenameField,
+        mode: (def.mode === "canvas") ? "canvas" : "fit",
+        path: label
+    };
+}
+
+// Human-readable "<mode> [WxH] <depth>" for the summary.
+function sweepDesc(def) {
+    var size = (def.mode === "trimmed") ? "" : (" " + def.w + "x" + def.h);
+    return def.mode + size + " " + def.depth;
+}
+
 // Orchestrate a CSV manifest export on the duplicate document. Runs entirely on the
 // duplicate (env.documentCopy); the original is never touched. Flow (spec §6):
 //   1. guard that we are on the duplicate, and that there is something to export;
@@ -1053,7 +1160,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         var block = csvBlocks[b];
         if (block.scopeSpec === null) {
             anyUnscoped = true;
-            jobs.push({ folderName: "", rootId: null, rows: block.rows });
+            jobs.push({ folderName: "", rootId: null, rows: block.rows, def: block.def });
             continue;
         }
         var resolved = resolveCsvPath(block.scopeSpec, app.activeDocument);
@@ -1069,7 +1176,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         // "folder:" omitted -> default the output folder to the resolved group's name.
         var folderName = (block.folderName !== null && block.folderName.length > 0) ?
             block.folderName : resolved.name;
-        jobs.push({ folderName: folderName, rootId: resolved.id, rows: block.rows });
+        jobs.push({ folderName: folderName, rootId: resolved.id, rows: block.rows, def: block.def });
     }
 
     // Prune to the UNION of all block scopes. If any block is unscoped (doc root) the run
@@ -1104,18 +1211,38 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     var collisions = [];       // "folder/path overwrites earlier <name>" strings
     var seenKeys = {};         // collision key (by output folder) -> first claimant
     var resolvableCount = 0;
+    var sweptEligibleTotal = 0; // swept (non-claimed) assets across all default: blocks
+    var drillRecognized = [];  // "::" rows whose prefix is a Smart Object (recognized, not yet exported)
+    var drillBadPrefix = [];   // "::" rows whose prefix resolves but is NOT a Smart Object (loud error)
     for (var jv = 0; jv < jobs.length; jv++) {
         var jobV = jobs[jv];
         var rootV = jobRoot(jobV);
         var folderLabel = jobV.folderName.length ? (jobV.folderName + " / ") : "";
+        jobV.claimIds = {}; // stable ids of assets a listed row targets (sweep skips these)
         for (var rv = 0; rv < jobV.rows.length; rv++) {
             var rowV = jobV.rows[rv];
-            var hit = rootV ? resolveCsvPath(rowV.path, rootV) : null;
+            // Resolve the FIRST drill segment only. For a non-"::" path this is the whole path,
+            // so the call is byte-for-byte identical to today. For a "::" path it lands on the
+            // prefix that Step 2 will eventually open and drill into.
+            var firstSeg = splitDrillSegments(rowV.path)[0];
+            var hit = rootV ? resolveCsvPath(firstSeg, rootV) : null;
             if (!hit) {
                 unresolvedRows.push(folderLabel + rowV.path);
                 continue;
             }
+            if (isDrillPath(rowV.path)) {
+                // Step 1: recognize drill rows but export nothing from inside the SO yet. A prefix
+                // that is not a Smart Object is a loud error; the run still continues.
+                if (isSmartObjectLayer(hit)) {
+                    drillRecognized.push(folderLabel + rowV.path);
+                } else {
+                    drillBadPrefix.push(folderLabel + rowV.path +
+                        "  (prefix \"" + firstSeg + "\" is not a Smart Object)");
+                }
+                continue;
+            }
             resolvableCount++;
+            try { if (hit.id !== undefined && hit.id !== null) { jobV.claimIds[hit.id] = true; } } catch (eClaim) { }
             var key = csvOutputKey(rowV.filename, jobV.folderName);
             if (seenKeys[key]) {
                 collisions.push(folderLabel + rowV.path + " -> \"" + rowV.filename + "\" overwrites " + seenKeys[key]);
@@ -1123,31 +1250,60 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                 seenKeys[key] = folderLabel + rowV.path;
             }
         }
+        // With a default: rule, enumerate the swept (non-claimed) assets up front so the
+        // summary has a total and same-folder name collisions are pre-detected. No writing.
+        if (jobV.def && rootV) {
+            enumerateSweep(rootV, jobV, function (ref, filenameField, label) {
+                sweptEligibleTotal++;
+                // Swept assets write to the ROOT export folder (OUT/), so key the collision
+                // check by "" -- matching the export pass, not the block's folder.
+                var sk = csvOutputKey(filenameField, "");
+                if (seenKeys[sk]) {
+                    collisions.push(label + " (swept) overwrites " + seenKeys[sk]);
+                } else {
+                    seenKeys[sk] = label + " (swept)";
+                }
+            });
+        }
     }
     // Validation refs are intentionally discarded here; the export pass re-resolves live.
 
-    // Dev dry-run, or nothing resolves at all: report and write nothing.
-    if (DRY_RUN || resolvableCount === 0) {
+    // Dev dry-run, or nothing resolves at all: report and write nothing. A default: sweep
+    // can export with zero listed rows, so swept-eligible assets also count as "something".
+    if (DRY_RUN || (resolvableCount === 0 && sweptEligibleTotal === 0 && drillRecognized.length === 0)) {
         app.displayDialogs = savedDialogMode;
         var head = DRY_RUN ? "DRY RUN (no files written)." :
             "Nothing to export: no CSV row resolved to a layer or folder.";
         showCsvSummary(head, 0, failures, warnings, badScopes, unresolvedRows, collisions,
-            dupDurationMs, profiler.format(profiler.getDuration(true, true)));
+            drillRecognized, drillBadPrefix, dupDurationMs, profiler.format(profiler.getDuration(true, true)));
         return 0;
     }
 
     // --- Export pass: re-resolve each row live and dispatch ---
     var totalRows = 0;
     for (var jt = 0; jt < jobs.length; jt++) { totalRows += jobs[jt].rows.length; }
+    var progressTotal = totalRows + sweptEligibleTotal; // swept assets share the same bar
     if (progressBarWindow) {
-        showProgressBar(progressBarWindow, "Exporting (CSV Manifest)...", totalRows);
+        showProgressBar(progressBarWindow, "Exporting (CSV Manifest)...", progressTotal);
     }
     var done = 0;
+    var sweptTotal = 0; // swept files actually saved (for the summary)
     try {
         for (var je = 0; je < jobs.length && !userCancelled; je++) {
             var job = jobs[je];
             for (var re = 0; re < job.rows.length; re++) {
                 var row = job.rows[re];
+                // Step 1: "::" rows are recognized in the summary but not yet exported. Skipping
+                // here also prevents a drill row from wrongly exporting the SO layer itself.
+                if (isDrillPath(row.path)) {
+                    done++;
+                    if (progressBarWindow) {
+                        updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
+                        repaintProgressBar(progressBarWindow);
+                        if (userCancelled) { break; }
+                    }
+                    continue;
+                }
                 var root = jobRoot(job);
                 var target = root ? resolveCsvPath(row.path, root) : null;
                 if (target) {
@@ -1159,10 +1315,34 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                 }
                 done++;
                 if (progressBarWindow) {
-                    updateProgressBar(progressBarWindow, "Exporting " + done + " of " + totalRows + "...");
+                    updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
                     repaintProgressBar(progressBarWindow);
                     if (userCancelled) { break; }
                 }
+            }
+            // After the listed rows (overrides), sweep the scope at the block's default. The
+            // listed rows obey folder: (OUT/<folderName>/); the swept "rest" goes to the ROOT
+            // export folder (OUT/), recursive mirroring nesting under it via filenameField.
+            if (job.def && !userCancelled) {
+                var sweptBefore = retVal.count;
+                var sweepRoot = jobRoot(job);
+                enumerateSweep(sweepRoot, job, function (ref, filenameField, label) {
+                    if (userCancelled) { return; }
+                    var srow = sweepRowFor(job.def, filenameField, label);
+                    if (ref.typename === "LayerSet") {
+                        exportFlattenedFolder(ref, srow, "", retVal, failures, warnings, ext);
+                    } else {
+                        exportSingleLayer(ref, srow, "", retVal, failures, warnings, ext);
+                    }
+                    done++;
+                    if (progressBarWindow) {
+                        updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
+                        repaintProgressBar(progressBarWindow);
+                    }
+                });
+                var sweptHere = retVal.count - sweptBefore;
+                sweptTotal += sweptHere;
+                warnings.push("Swept " + sweptHere + " asset(s) into OUT/ (root) at " + sweepDesc(job.def));
             }
         }
     } finally {
@@ -1171,9 +1351,11 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     }
 
     var exportDuration = profiler.format(profiler.getDuration(true, true));
-    var head = "Saved " + retVal.count + " file(s)." + (userCancelled ? "  (cancelled early)" : "");
+    var head = "Saved " + retVal.count + " file(s)" +
+        (sweptTotal > 0 ? (" (" + sweptTotal + " swept)") : "") + "." +
+        (userCancelled ? "  (cancelled early)" : "");
     showCsvSummary(head, retVal.count, failures, warnings, badScopes, unresolvedRows, collisions,
-        dupDurationMs, exportDuration);
+        drillRecognized, drillBadPrefix, dupDurationMs, exportDuration);
 
     // Open the output folder when done.
     try { (new Folder(prefs.destination)).execute(); } catch (eOpen) { }
@@ -1184,7 +1366,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
 // Build and show the end-of-run CSV summary. Bad scopes are surfaced first and loud
 // (a bad scope silently drops a whole branch the user intended to export). Timing is
 // always included so duplicate() vs export cost can be compared later.
-function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, dupDurationMs, exportDurationStr) {
+function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, drillRecognized, drillBadPrefix, dupDurationMs, exportDurationStr) {
     var maxPer = 10;
     function section(title, items) {
         if (!items || items.length === 0) { return ""; }
@@ -1194,12 +1376,14 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     }
     var msg = headline;
     msg += section("** BAD SCOPE — whole branch skipped **", badScopes);
+    msg += section("** DRILL PREFIX NOT A SMART OBJECT **", drillBadPrefix);
     msg += section("Unresolved rows (skipped)", unresolvedRows);
     msg += section("Errors", failures);
     msg += section("Duplicate-name overwrites", collisions);
+    msg += section("SO-drill rows (recognized — not yet exported)", drillRecognized);
     msg += section("Warnings", warnings);
     msg += "\n\nTiming:  duplicate " + formatMs(dupDurationMs) + "   +   export " + exportDurationStr;
-    var isError = (failures.length > 0) || (badScopes.length > 0);
+    var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0);
     alert(msg, "CSV Export Summary", isError);
 }
 
@@ -1253,6 +1437,23 @@ function addPadding() {
 // =====================
 // CSV Manifest helpers
 // =====================
+
+// Split a Path on "::" into drill segments; each segment keeps the existing "/" grammar and
+// addresses one level deeper inside a Smart Object. A path with no "::" returns a single-element
+// array holding the (trimmed) whole path -- identical to today's whole-path resolve.
+function splitDrillSegments(pathStr) {
+    var out = [];
+    var parts = String(pathStr).split("::");
+    for (var i = 0; i < parts.length; i++) { out.push(csvTrim(parts[i])); }
+    return out;
+}
+// True when a Path asks to drill into a Smart Object (contains "::").
+function isDrillPath(pathStr) { return String(pathStr).indexOf("::") !== -1; }
+// True when a resolved reference is an embedded Smart Object layer. LayerSets have no .kind
+// (returns undefined -> not an SO); the try/catch guards any ref that lacks the property.
+function isSmartObjectLayer(ref) {
+    try { return ref && ref.kind === LayerKind.SMARTOBJECT; } catch (e) { return false; }
+}
 
 // Resolve a slash-separated CSV path to a live ArtLayer or LayerSet (or null), read
 // top-down from rootContainer (the document, or a scope-root LayerSet). Each segment is:
@@ -1417,6 +1618,54 @@ function parseScopeFolderLine(trimmedLine) {
     return { scopeSpec: csvTrim(afterScope), folderName: null };
 }
 
+// Parse a "default: <mode> [WxH] <depth>" sweep directive. Returns { ok:true, def:{mode,
+// w, h, depth} } or { ok:false, error:"<reason>" }. mode is trimmed|fit|canvas; trimmed
+// takes no size; fit/canvas need a WxH (either "166x168" or "166 168"); depth is
+// direct|recursive. Sweep padding is always 0 (size only).
+function parseDefaultSize(sizeToks) {
+    var ws, hs;
+    if (sizeToks.length === 1) {
+        var p = sizeToks[0].toLowerCase().split("x");
+        if (p.length !== 2) { return null; }
+        ws = p[0]; hs = p[1];
+    } else if (sizeToks.length === 2) {
+        ws = sizeToks[0]; hs = sizeToks[1];
+    } else {
+        return null;
+    }
+    var w = parseInt(csvTrim(ws), 10);
+    var h = parseInt(csvTrim(hs), 10);
+    if (isNaN(w) || isNaN(h) || w <= 0 || h <= 0) { return null; }
+    return { w: w, h: h };
+}
+function parseDefaultLine(trimmedLine) {
+    var rest = csvTrim(trimmedLine.substring(trimmedLine.indexOf(":") + 1));
+    var raw = rest.split(/\s+/);
+    var t = [];
+    for (var i = 0; i < raw.length; i++) { if (raw[i].length > 0) { t.push(raw[i]); } }
+    if (t.length === 0) { return { ok: false, error: "missing mode (use trimmed|fit|canvas)" }; }
+    var mode = t[0].toLowerCase();
+    var depth, w = 0, h = 0;
+    if (mode === "trimmed") {
+        if (t.length !== 2) { return { ok: false, error: "'trimmed' takes only a depth (direct|recursive)" }; }
+        depth = t[1].toLowerCase();
+    } else if (mode === "fit" || mode === "canvas") {
+        if (t.length < 3) { return { ok: false, error: "'" + mode + "' needs a WxH and a depth" }; }
+        depth = t[t.length - 1].toLowerCase();
+        var sizeToks = [];
+        for (var j = 1; j < t.length - 1; j++) { sizeToks.push(t[j]); }
+        var dim = parseDefaultSize(sizeToks);
+        if (!dim) { return { ok: false, error: "'" + mode + "' needs a valid WxH (e.g. 166x168)" }; }
+        w = dim.w; h = dim.h;
+    } else {
+        return { ok: false, error: "unknown mode \"" + t[0] + "\" (use trimmed|fit|canvas)" };
+    }
+    if (depth !== "direct" && depth !== "recursive") {
+        return { ok: false, error: "missing or invalid depth (use direct|recursive)" };
+    }
+    return { ok: true, def: { mode: mode, w: w, h: h, depth: depth } };
+}
+
 // Parse the CSV manifest into a list of scope blocks (see the per-block format below).
 // Format: Width,Height,Padding,Filename,Mode,Path  (header auto-detected & skipped).
 //   - Width/Height/Padding may be empty (=> 0 => natural size).
@@ -1440,6 +1689,7 @@ function parseCsvFile(filePath) {
     var current = null;            // block that data rows are appended to
     var expectingHeader = false;   // true right after a scope: line (header is mandatory)
     var implicitAutoHeader = true; // leading no-scope block keeps today's header auto-detect
+    var pendingDefault = null;     // a parsed default: awaiting the block whose header it precedes
     try {
         f.open("r");
         var lineNum = 0;
@@ -1449,11 +1699,28 @@ function parseCsvFile(filePath) {
             var trimmed = csvTrim(line);
             if (trimmed.length === 0) { continue; }
 
+            // A "default:" line (case-insensitive) declares the sweep rule for the block whose
+            // header it precedes (it may sit before or after that block's scope: line). Held in
+            // pendingDefault and attached when the block's header is consumed.
+            if (trimmed.toLowerCase().indexOf("default:") === 0) {
+                var pd = parseDefaultLine(trimmed);
+                if (!pd.ok) {
+                    try { f.close(); } catch (eD) { }
+                    alert(
+                        "CSV parse error in a default: line -- " + pd.error + ".\n\n" +
+                        "Grammar: default: <trimmed|fit|canvas> [WxH] <direct|recursive>",
+                        "CSV Format Error", true);
+                    return { blocks: [] };
+                }
+                pendingDefault = pd.def;
+                continue;
+            }
+
             // A "scope:" line (case-insensitive) starts a new block; an optional "folder:"
             // token on the same line names its output sub-folder.
             if (trimmed.toLowerCase().indexOf("scope:") === 0) {
                 var sf = parseScopeFolderLine(trimmed);
-                current = { scopeSpec: sf.scopeSpec, folderName: sf.folderName, rows: [] };
+                current = { scopeSpec: sf.scopeSpec, folderName: sf.folderName, def: null, rows: [] };
                 blocks.push(current);
                 expectingHeader = true;
                 continue;
@@ -1467,7 +1734,10 @@ function parseCsvFile(filePath) {
 
             // Every scope: block REQUIRES its own header row immediately after the scope line.
             if (expectingHeader) {
-                if (looksLikeHeader) { expectingHeader = false; continue; }
+                if (looksLikeHeader) {
+                    if (pendingDefault !== null) { current.def = pendingDefault; pendingDefault = null; }
+                    expectingHeader = false; continue;
+                }
                 try { f.close(); } catch (eCh) { }
                 var blockLabel = "scope: " + current.scopeSpec +
                     (current.folderName !== null ? ("  folder: " + current.folderName) : "");
@@ -1482,8 +1752,12 @@ function parseCsvFile(filePath) {
             // No scope: line yet -> the leading rows form a single implicit (doc-root) block,
             // which keeps today's optional-header auto-detect for backward compatibility.
             if (current === null) {
-                current = { scopeSpec: null, folderName: "", rows: [] };
+                current = { scopeSpec: null, folderName: "", def: null, rows: [] };
                 blocks.push(current);
+            }
+            // A default: that preceded an unscoped block attaches to that implicit block.
+            if (pendingDefault !== null && current.scopeSpec === null) {
+                current.def = pendingDefault; pendingDefault = null;
             }
             if (implicitAutoHeader && current.scopeSpec === null) {
                 implicitAutoHeader = false;
