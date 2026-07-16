@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Breakdown — Tai Alt</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b24; --panel2:#1d242f; --line:#2a3342;
+    --text:#dbe2ec; --dim:#8b97a8; --accent:#4fc3f7; --accent2:#ffb74d;
+    --good:#81c784; --bad:#e57373; --code:#0a0d12;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
+  .wrap{max-width:960px;margin:0 auto;padding:24px 20px 80px}
+  header{padding:48px 0 24px;text-align:center}
+  header h1{font-size:2rem;color:#fff}
+  header h1 span{color:var(--accent)}
+  header p{color:var(--dim);margin-top:8px}
+  nav{position:sticky;top:0;background:rgba(14,17,22,.95);backdrop-filter:blur(6px);z-index:10;
+      display:flex;gap:4px;flex-wrap:wrap;justify-content:center;padding:10px 0;border-bottom:1px solid var(--line)}
+  nav button{background:transparent;border:1px solid var(--line);color:var(--dim);padding:8px 14px;
+      border-radius:20px;cursor:pointer;font-size:.85rem;transition:.2s}
+  nav button:hover{color:var(--text);border-color:var(--accent)}
+  nav button.active{background:var(--accent);color:#04121b;border-color:var(--accent);font-weight:600}
+  section{display:none;padding-top:28px}
+  section.show{display:block;animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h2{color:#fff;font-size:1.4rem;margin-bottom:14px}
+  h3{color:var(--accent);font-size:1.05rem;margin:22px 0 8px}
+  p{margin-bottom:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px}
+  .card h3:first-child{margin-top:0}
+  code,pre{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:.85em}
+  code{background:var(--code);padding:2px 6px;border-radius:5px;color:var(--accent2)}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto;
+      margin:10px 0;color:#c8d3e0;line-height:1.5}
+  pre .c{color:#5c6b7f}  pre .k{color:var(--accent)}  pre .s{color:var(--accent2)}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+      padding:2px 10px;font-size:.78rem;color:var(--dim);margin:2px 3px 2px 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){.grid2{grid-template-columns:1fr}}
+  .vs{border-left:3px solid var(--accent)}
+  .vs.b{border-left-color:var(--accent2)}
+  .dim{color:var(--dim)}
+  .good{color:var(--good)} .bad{color:var(--bad)} .hl{color:var(--accent2)}
+  /* stepper */
+  .stepper{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+  .stepper button{flex:1;min-width:86px;background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+      padding:8px 6px;border-radius:8px;cursor:pointer;font-size:.75rem;transition:.15s}
+  .stepper button.on{background:var(--accent);color:#04121b;font-weight:700;border-color:var(--accent)}
+  .stepper button.done{border-color:var(--good);color:var(--good)}
+  .stepbody{min-height:180px}
+  .stepnav{display:flex;gap:10px;margin-top:14px}
+  .stepnav button{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 18px;border-radius:8px;cursor:pointer}
+  .stepnav button:hover{border-color:var(--accent)}
+  /* fit/canvas demo */
+  .demo{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+  .demo .controls{flex:1;min-width:220px}
+  .demo label{display:block;font-size:.8rem;color:var(--dim);margin:10px 0 2px}
+  .demo input[type=range]{width:100%}
+  .demo .modebtns{display:flex;gap:8px;margin-top:12px}
+  .demo .modebtns button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer}
+  .demo .modebtns button.on{background:var(--accent);color:#04121b;font-weight:700}
+  #demoStage{background:repeating-conic-gradient(#232a36 0 25%,#1a202a 0 50%) 0 0/16px 16px;
+      border:1px solid var(--line);border-radius:8px;position:relative;overflow:hidden}
+  #demoCanvas{position:absolute;border:1.5px dashed var(--accent);}
+  #demoAsset{position:absolute;background:linear-gradient(135deg,#ffb74d,#ff8a65);border-radius:6px;
+      display:flex;align-items:center;justify-content:center;color:#3a1f00;font-weight:700;font-size:.7rem}
+  #demoPad{position:absolute;border:1px dotted var(--good)}
+  .demo .readout{font-size:.8rem;color:var(--dim);margin-top:10px;font-family:Menlo,monospace}
+  /* tree */
+  .tree{font-family:Menlo,monospace;font-size:.85rem;background:var(--code);border:1px solid var(--line);
+      border-radius:8px;padding:14px}
+  .tree div{padding:2px 6px;border-radius:4px;cursor:pointer;transition:.15s}
+  .tree div:hover{background:var(--panel2)}
+  .tree div.hit{background:var(--accent);color:#04121b;font-weight:700}
+  .tree .f::before{content:"📁 "} .tree .l::before{content:"🖼 "}
+  .pathbox{width:100%;background:var(--code);border:1px solid var(--line);border-radius:8px;color:var(--accent2);
+      font-family:Menlo,monospace;padding:10px 12px;font-size:.9rem;margin-bottom:10px}
+  .pathresult{font-size:.85rem;min-height:24px;margin-bottom:8px}
+  /* quiz */
+  .q{margin-bottom:18px}
+  .q .opts button{display:block;width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);
+      color:var(--text);padding:10px 14px;border-radius:8px;margin-top:6px;cursor:pointer}
+  .q .opts button:hover{border-color:var(--accent)}
+  .q .opts button.right{border-color:var(--good);background:rgba(129,199,132,.12)}
+  .q .opts button.wrong{border-color:var(--bad);background:rgba(229,115,115,.12)}
+  .q .why{display:none;font-size:.85rem;color:var(--dim);margin-top:8px;padding-left:4px;border-left:2px solid var(--accent)}
+  .q .why.show{display:block}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.88rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+  th{background:var(--panel2);color:var(--accent)}
+  .talk{background:var(--panel2);border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;
+      padding:12px 16px;margin:10px 0;font-style:italic}
+  .talk b{color:var(--accent2);font-style:normal}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>The <span>Pipeline</span> Breakdown</h1>
+  <p>Photoshop CSV Export &amp; Spine CLI tooling — understand it, explain it, defend it.</p>
+</header>
+
+<nav id="nav">
+  <button data-s="big" class="active">Big Picture</button>
+  <button data-s="fork">The Fork</button>
+  <button data-s="journey">Journey of a Row</button>
+  <button data-s="concepts">Key Concepts</button>
+  <button data-s="playground">Playground</button>
+  <button data-s="spine">Spine CLI</button>
+  <button data-s="prep">Interview Prep</button>
+  <button data-s="quiz">Quiz</button>
+</nav>
+
+<!-- ============ BIG PICTURE ============ -->
+<section id="big" class="show">
+  <h2>What problem does this solve?</h2>
+  <div class="card">
+    <p>A slot game PSD holds <b>hundreds of assets</b>: symbols, jackpots, UI, banners. Before this tool, getting them into the game meant an artist manually selecting, cropping, resizing and exporting each one — for <em>every</em> game, at <em>every</em> revision. Hours of error-prone clicking.</p>
+    <p><b>The idea:</b> describe the export once, in a CSV file. One row = one output image. Run the script, get every asset — sized, padded, named, and sorted into folders — in one click.</p>
+  </div>
+  <div class="grid2">
+    <div class="card vs">
+      <h3>Before</h3>
+      <p class="dim">Select layer → crop → resize canvas → export → rename → repeat ×300. Any layer reorder in the PSD breaks your habits. New game = start over.</p>
+    </div>
+    <div class="card vs b">
+      <h3 style="color:var(--accent2)">After</h3>
+      <p class="dim">Write (or reuse) a CSV manifest. Run script. 300 files appear, correctly sized and named, in the right subfolders. The CSV doubles as documentation of what the game needs.</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3>The one-sentence pitch</h3>
+    <div class="talk">"It's a <b>manifest-driven exporter</b>: a CSV file declares exactly which layers to export and how — one row per image — and the script does everything else on a safe duplicate of the document."</div>
+    <p class="dim">Key word: <b>declarative</b>. The artist declares <em>what</em> they want; the script owns <em>how</em>.</p>
+  </div>
+</section>
+
+<!-- ============ THE FORK ============ -->
+<section id="fork">
+  <h2>Built on the shoulders of a giant</h2>
+  <div class="card">
+    <p>The base is <code>antipalindrome/Photoshop-Export-Layers-to-Files-Fast</code> — a popular open-source script that exports <em>all</em> layers of a document as separate files, positionally (layer #1 → file #1, etc.).</p>
+    <p>That base gave me for free: the ExtendScript plumbing (dialogs, progress bar, preferences), fast layer traversal, and battle-tested save routines for PNG/JPG/TIFF and more.</p>
+  </div>
+  <div class="card">
+    <h3>What the fork changes — and why</h3>
+    <table>
+      <tr><th>Upstream</th><th>My fork</th><th>Why it matters</th></tr>
+      <tr><td>Exports everything, positionally</td><td>Exports only what the CSV names, by <b>explicit path</b></td><td>Reordering layers in the PSD can never misalign the output</td></tr>
+      <tr><td>One size for all</td><td>Per-row width / height / padding / mode</td><td>Every asset gets its exact game-ready dimensions</td></tr>
+      <tr><td>Filenames from layer names</td><td>Filenames from the CSV, with subfolders</td><td>Art naming and game naming stay decoupled</td></tr>
+      <tr><td>Works on the open document</td><td>Auto-saves, then works on a <b>duplicate</b></td><td>The artist's PSD is never touched — zero-risk runs</td></tr>
+      <tr><td>Exports what's visible</td><td>Named = exported, even if hidden</td><td>The manifest is the single source of truth for intent</td></tr>
+    </table>
+    <div class="talk">"I didn't rebuild the wheel — I <b>kept the upstream export engine</b> and replaced the <em>selection model</em>: from 'export everything by position' to 'export exactly what a manifest declares'."</div>
+  </div>
+</section>
+
+<!-- ============ JOURNEY ============ -->
+<section id="journey">
+  <h2>The journey of one CSV row</h2>
+  <p class="dim">Follow <code>277,272,0,symbols/symbol_19,fit,Jackpots/grand</code> from text to PNG. Click through the steps.</p>
+  <div class="card">
+    <div class="stepper" id="stepper"></div>
+    <div class="stepbody" id="stepbody"></div>
+    <div class="stepnav">
+      <button onclick="step(-1)">← Back</button>
+      <button onclick="step(1)">Next →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CONCEPTS ============ -->
+<section id="concepts">
+  <h2>Key concepts, one by one</h2>
+
+  <div class="card">
+    <h3>1 — Path grammar: how a row finds its layer</h3>
+    <p>A <code>Path</code> is read top-down through the Layers panel, like a file path: <code>Jackpots/grand</code>, <code>LowSymbols/[0]</code>, <code>Wild/[1]/Text</code>.</p>
+    <p><b>Two segment types:</b> a <b>name</b> (matched against trimmed layer names — Photoshop names love trailing spaces) or an <b>index</b> <code>[n]</code> where <code>[0]</code> is the TOP item in the panel, counting layers and groups together.</p>
+    <p>The resolver (<code>resolveCsvPath</code>) is ~25 lines: split on <code>/</code>, walk down, at each level find the child by name or index. If any segment fails → the row is reported as unresolved and <em>skipped</em>, never crashing the run.</p>
+    <p class="dim">Subtlety worth mentioning: only exactly <code>[digits]</code> is an index. <code>Symbols [ALL]</code> is a <em>name</em> — brackets included.</p>
+  </div>
+
+  <div class="card">
+    <h3>2 — fit vs canvas: the sizing contract</h3>
+    <p><b>fit</b> (default): scale the asset to fit inside <code>(W−pad×2) × (H−pad×2)</code>, then center it on an exact <code>W×H</code> canvas. Use for symbols that must fill a slot cell with breathing room.</p>
+    <p><b>canvas</b>: keep the asset's original pixels, center on <code>W×H</code>, crop overflow. Use for pixel-perfect sprites where scaling would blur.</p>
+    <p><b>Empty W/H</b> = natural size: no resize, no fixed canvas. Try all three in the <b>Playground</b> tab.</p>
+  </div>
+
+  <div class="card">
+    <h3>3 — Folder = flatten. Always.</h3>
+    <p>If a Path lands on a <em>group</em>, the whole group becomes <b>one image</b>. Want each child separately? Write one row per child. Deliberate design: <b>every output file traces back to exactly one row</b> — no magic expansion, no surprises.</p>
+  </div>
+
+  <div class="card">
+    <h3>4 — Scopes: one manifest, many groups</h3>
+    <p>A <code>scope: Jackpots, LowSymbols</code> line before the header makes every row resolve <em>relative to each scope root in turn</em>, and each scope writes into its own subfolder (<code>OUT/Jackpots/…</code>). One generic manifest can serve every symbol set in the document.</p>
+    <p class="dim">Under the hood, out-of-scope top-level groups are <b>pruned from the duplicate</b> before export — smaller doc, faster ops — and scope roots are re-found by <b>stable layer id</b>, not index, so pruning can't invalidate them.</p>
+  </div>
+
+  <div class="card">
+    <h3>5 — The safety architecture (the part to be proudest of)</h3>
+    <table>
+      <tr><th>Mechanism</th><th>What it protects against</th></tr>
+      <tr><td>Silent auto-save, then <b>duplicate()</b>; all work happens on the copy</td><td>Any corruption of the artist's PSD — the original is never modified</td></tr>
+      <tr><td>Guard: abort if the active doc is still the source</td><td>A failed duplicate silently destroying the original</td></tr>
+      <tr><td><b>Validation pass before export</b>: resolve every row, detect collisions, bad scopes</td><td>Waiting through a 10-minute export just to learn row 3 was a typo</td></tr>
+      <tr><td>Per-row <code>storeHistory()/restoreHistory()</code></td><td>One row's crop/resize contaminating the next row</td></tr>
+      <tr><td>Never <code>merge()</code> groups — isolate + composite via save</td><td>Pass-Through groups baking a <b>black backdrop</b> into transparent exports</td></tr>
+      <tr><td><code>neutralizeBackgroundLayer()</code> demotes the locked Background</td><td>The un-hideable Background compositing into every single export</td></tr>
+      <tr><td><code>bakeLayerStyleInPlace()</code> rasterizes fx before crop/resize</td><td>Drop shadows / strokes re-rendering at the wrong scale after resize</td></tr>
+      <tr><td>Errors never abort the run; end-of-run summary reports everything</td><td>One bad row killing a 300-row export</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ============ PLAYGROUND ============ -->
+<section id="playground">
+  <h2>Playground</h2>
+
+  <div class="card">
+    <h3>fit vs canvas — live demo</h3>
+    <div class="demo">
+      <div class="controls">
+        <label>Canvas width: <span id="wVal">300</span> px</label>
+        <input type="range" id="wSlide" min="120" max="420" value="300">
+        <label>Canvas height: <span id="hVal">220</span> px</label>
+        <input type="range" id="hSlide" min="100" max="300" value="220">
+        <label>Padding: <span id="pVal">20</span> px</label>
+        <input type="range" id="pSlide" min="0" max="60" value="20">
+        <div class="modebtns">
+          <button id="mFit" class="on" onclick="setMode('fit')">fit</button>
+          <button id="mCanvas" onclick="setMode('canvas')">canvas</button>
+        </div>
+        <div class="readout" id="readout"></div>
+      </div>
+      <div style="flex:1.4;min-width:280px">
+        <div id="demoStage" style="width:100%;height:320px">
+          <div id="demoCanvas"><div id="demoPad"></div></div>
+          <div id="demoAsset">ASSET 240×160</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Path resolver — type a path, watch it resolve</h3>
+    <p class="dim">This mirrors <code>resolveCsvPath()</code> exactly: names are trimmed-matched, <code>[n]</code> is a direct-child index from the top. Try: <code>Jackpots/grand</code>, <code>LowSymbols/[0]</code>, <code>Symbols [ALL]</code>, <code>Jackpots/[1]/glow</code></p>
+    <input class="pathbox" id="pathInput" value="Jackpots/grand" spellcheck="false">
+    <div class="pathresult" id="pathResult"></div>
+    <div class="tree" id="tree"></div>
+  </div>
+</section>
+
+<!-- ============ SPINE ============ -->
+<section id="spine">
+  <h2>The Spine CLI scripts — same philosophy, different engine</h2>
+  <div class="card">
+    <p>Spine (Esoteric Software) ships a <b>command-line interface</b>: everything the editor's export dialog does can be driven headlessly from a terminal, configured by an <b>export-settings JSON</b>. My Python scripts wrap that CLI into batch pipelines. The philosophy is identical to the Photoshop script: <em>declare once, run everywhere, never touch the source file</em>.</p>
+  </div>
+
+  <div class="card">
+    <h3>Script 1 — Batch multi-scale exporter (HD/MD/SD)</h3>
+    <p>The studio needs every character at three scales in a required format. The pattern:</p>
+    <pre><span class="c"># the standard Spine CLI batch pattern</span>
+<span class="k">for</span> project <span class="k">in</span> find_spine_files(input_dir):      <span class="c"># 1. discover .spine files</span>
+    <span class="k">for</span> scale, suffix <span class="k">in</span> [(1.0,<span class="s">"HD"</span>), (0.66,<span class="s">"MD"</span>), (0.33,<span class="s">"SD"</span>)]:
+        settings = load_json(<span class="s">"export_template.json"</span>)  <span class="c"># 2. one template...</span>
+        settings[<span class="s">"scale"</span>] = scale                       <span class="c"># 3. ...patched per run</span>
+        settings[<span class="s">"output"</span>] = out_dir / suffix
+        run([SPINE_APP, <span class="s">"--update"</span>, VERSION,            <span class="c"># pin editor version!</span>
+             <span class="s">"--input"</span>, project, <span class="s">"--export"</span>, settings_path])</pre>
+    <p><b>Points to explain confidently:</b> the export JSON is the contract (atlas packing, format, scale live there); the CLI's <code>--update</code> flag pins the Spine editor version so every artist's export is identical; Python just orchestrates — discovery, JSON patching, subprocess calls, and error collection.</p>
+  </div>
+
+  <div class="card">
+    <h3>Script 2 — Spine → MP4 renderer</h3>
+    <p>Two-stage pipeline: Spine CLI can't write video, but it <em>can</em> export image sequences.</p>
+    <pre><span class="c"># stage 1: Spine CLI renders each animation to a PNG sequence</span>
+spine --input char.spine --export png_sequence.json
+<span class="c"># stage 2: ffmpeg assembles frames into consistent, centered video</span>
+ffmpeg -framerate 30 -i frame_%04d.png -pix_fmt yuv420p out.mp4</pre>
+    <p><b>Why it exists:</b> animators and stakeholders need to review animations without opening Spine. Auto-rendering <em>every</em> animation to a centered, consistent MP4 turns review into "scrub a folder of videos".</p>
+  </div>
+
+  <div class="card">
+    <h3>Script 3 — Clean Spine Alpha</h3>
+    <p>Additive-blend textures exported as WebP showed <b>white fringing</b> — edge pixels where RGB values leak from transparent areas. The script batch-processes textures to clean those halo artifacts. The interview-friendly explanation: "additive blending multiplies color by alpha at runtime; any non-black RGB hiding in fully-transparent pixels becomes a visible glow halo — the script sanitizes those pixels in bulk."</p>
+  </div>
+
+  <div class="card">
+    <p class="dim">⚠ These three are described from their known behavior — drop the actual Python files into this folder and this section can be rebuilt line-by-line accurate.</p>
+  </div>
+</section>
+
+<!-- ============ PREP ============ -->
+<section id="prep">
+  <h2>Explaining it — three depths</h2>
+
+  <div class="card">
+    <h3>⏱ 30 seconds (recruiter / non-technical)</h3>
+    <div class="talk">"Our artists were manually exporting hundreds of images from Photoshop for every game. I built a tool where a simple spreadsheet describes every asset — its size and name — and the script exports all of them in one click. What took hours now takes minutes, and it can't touch the original file, so it's completely safe."</div>
+  </div>
+
+  <div class="card">
+    <h3>⏱ 2 minutes (art lead / producer)</h3>
+    <div class="talk">"It's a CSV-manifest exporter built on a popular open-source Photoshop script. The upstream exported everything positionally; I replaced that with explicit addressing — each CSV row names a layer or folder by path and declares output size, padding, fit mode and filename. Rows that point at folders flatten them to one image. A <b>scope</b> feature lets one generic manifest drive many symbol sets, each into its own folder. Before exporting it validates every row and reports typos, collisions and bad scopes up front, and the whole run happens on a duplicate — the artist's PSD is never modified. Across our games it removed an estimated 30–50% of manual production work."</div>
+  </div>
+
+  <div class="card">
+    <h3>⏱ Deep dive (tech artist / developer) — likely questions</h3>
+    <h3 style="color:var(--accent2)">"How do you avoid exporting a black background behind transparent assets?"</h3>
+    <p>Two things. Photoshop's locked Background layer can't be hidden, so it's demoted to a normal layer on the duplicate first (<code>neutralizeBackgroundLayer</code>). And groups are never <code>merge()</code>d — merging a Pass-Through group bakes a black backdrop — instead the group is isolated (everything else hidden) and the save's composite does the flattening, preserving transparency.</p>
+    <h3 style="color:var(--accent2)">"What happens when a row is wrong?"</h3>
+    <p>Nothing dramatic — that's the point. A validation pass resolves every row before any export; unresolved rows are skipped and listed in the end-of-run summary alongside collisions and bad scopes. One typo never kills a 300-row run.</p>
+    <h3 style="color:var(--accent2)">"Why don't layer effects break when you resize?"</h3>
+    <p>Live layer styles re-render at the new size — a 10px drop shadow stays 10px after downscaling, which looks wrong. So the script rasterizes the style into pixels <em>at native scale</em> first (via ActionManager, since the DOM has no API for it), then crops and resizes flat pixels.</p>
+    <h3 style="color:var(--accent2)">"How is state kept clean across hundreds of rows?"</h3>
+    <p>Each row is wrapped in history snapshot/restore, so crops and resizes are undone after saving; visibility (which history doesn't cover) is reset by re-hiding everything; and stale object references are avoided by re-resolving paths live per row and re-finding scope roots by stable layer <em>id</em> rather than index.</p>
+    <h3 style="color:var(--accent2)">"You used AI to write this — do you actually understand it?"</h3>
+    <p>Own this: "I designed the behavior, the CSV schema, and the safety model; AI accelerated the ExtendScript implementation. I can walk through any function — ask me one." Then do it. This page is your training ground.</p>
+  </div>
+</section>
+
+<!-- ============ QUIZ ============ -->
+<section id="quiz">
+  <h2>Check yourself</h2>
+  <p class="dim">If you can answer these cold, you can survive any interview question about the tool.</p>
+  <div id="quizBox"></div>
+</section>
+
+</div>
+
+<script>
+/* ---------- nav ---------- */
+const nav=document.getElementById('nav');
+nav.addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));
+  e.target.classList.add('active');
+  document.querySelectorAll('section').forEach(s=>s.classList.remove('show'));
+  document.getElementById(e.target.dataset.s).classList.add('show');
+  window.scrollTo({top:0});
+});
+
+/* ---------- stepper ---------- */
+const steps=[
+ {t:"Parse",h:"1 · Parse the CSV",b:`<p><code>parseCsvFile()</code> reads the manifest line by line: strips comments (<code>#</code>), skips blanks, auto-detects the header, honors quoted fields ("name, with comma"), and recognizes special lines like <code>scope:</code>.</p><p>Our row becomes an object: <code>{width:277, height:272, padding:0, filename:"symbols/symbol_19", mode:"fit", path:"Jackpots/grand"}</code></p><p class="dim">Old positional-format CSVs are rejected with a clear error — a deliberate break so nobody silently gets misaligned exports.</p>`},
+ {t:"Save+Dup",h:"2 · Auto-save, then duplicate",b:`<p>Before anything destructive: the open PSD is silently saved (<code>autoSaveSourceSilently</code>), then <b>duplicated</b>. From here on, every operation runs on the copy.</p><p>A guard even checks the active document is NOT the source — if duplication failed, the run aborts rather than risk the original.</p><div class="talk">"The artist's file is never modified. Ever. That one guarantee is why the team trusts one-click exports."</div>`},
+ {t:"Resolve",h:"3 · Resolve the path",b:`<p><code>resolveCsvPath("Jackpots/grand", doc)</code> splits on <code>/</code> and walks the layer tree: find child "Jackpots" at the root → inside it, find child "grand".</p><p>The result is a <b>LayerSet</b> (a group) — so this row will be a <em>flatten</em>. Had it been an ArtLayer, it'd export as a single layer. Those are the only two cases.</p>`},
+ {t:"Validate",h:"4 · Validate everything first",b:`<p>Before ANY pixels move, every row of every scope is resolved once: unresolved paths, duplicate output names (case-insensitive — macOS/Windows filesystems!), and bad scopes are collected.</p><p>Cheap dry pass now beats discovering a typo after a 10-minute export. A <code>DRY_RUN</code> dev toggle stops here and just reports.</p>`},
+ {t:"Isolate",h:"5 · Isolate the target",b:`<p>Hide <b>every</b> layer in the duplicate (<code>hideAllLayersDeep</code>), then re-show only the target group, all its descendants, and its ancestor chain.</p><p>The locked Background layer was already demoted to a normal layer so it actually hides — that's what keeps transparent exports transparent.</p>`},
+ {t:"Bake fx",h:"6 · Bake layer styles",b:`<p>For single layers: live effects (drop shadow, stroke…) are rasterized into pixels <b>at native document scale</b> via ActionManager — <em>before</em> crop/resize.</p><p>Why: a live 10px shadow re-renders as 10px even after the art shrinks 4×. Baked, it scales with the art like any pixel. A layer without styles makes this a harmless no-op.</p>`},
+ {t:"Crop+Size",h:"7 · Crop, then size per the row",b:`<p>Crop the document to the target's bounds, then <code>applyCsvSizing</code>:</p><p><b>fit</b>: scale into <code>(277−0×2) × (272−0×2)</code>, center on an exact 277×272 canvas.<br><b>canvas</b>: skip scaling, just set the canvas and center (crop overflow).<br><b>empty W/H</b>: natural size, no canvas at all.</p>`},
+ {t:"Save",h:"8 · Save the file",b:`<p><code>csvOutputFile</code> turns <code>symbols/symbol_19</code> into <code>OUT/symbols/symbol_19.png</code> — creating subfolders, sanitizing the name, adding the extension from the chosen format (PNG-24 here).</p><p>The save's own composite does the flattening for groups — the reason <code>merge()</code> is never called.</p>`},
+ {t:"Restore",h:"9 · Restore & next row",b:`<p><code>restoreHistory()</code> undoes the crop/resize; visibility is reset by re-hiding everything (history doesn't track visibility). References go stale after crop+undo, so the next row <b>re-resolves its path fresh</b>.</p><p>Rinse, repeat for all rows.</p>`},
+ {t:"Report",h:"10 · Summary & cleanup",b:`<p>The duplicate is closed <em>without saving</em>; the original was never touched. A summary alert shows: files saved, bad scopes (loudest — they silently drop whole branches), unresolved rows, overwrites, warnings, and timing (duplicate cost vs export cost).</p><p>Then the output folder pops open. Done.</p>`}
+];
+let cur=0;
+const stepperEl=document.getElementById('stepper'),bodyEl=document.getElementById('stepbody');
+function renderSteps(){
+  stepperEl.innerHTML=steps.map((s,i)=>`<button class="${i===cur?'on':i<cur?'done':''}" onclick="goStep(${i})">${i+1}. ${s.t}</button>`).join('');
+  bodyEl.innerHTML=`<h3 style="margin-top:0">${steps[cur].h}</h3>${steps[cur].b}`;
+}
+function goStep(i){cur=i;renderSteps()}
+function step(d){cur=Math.min(steps.length-1,Math.max(0,cur+d));renderSteps()}
+renderSteps();
+
+/* ---------- fit/canvas demo ---------- */
+const AW=240,AH=160; let mode='fit';
+const stage=document.getElementById('demoStage'),cnv=document.getElementById('demoCanvas'),
+      asset=document.getElementById('demoAsset'),padEl=document.getElementById('demoPad');
+function setMode(m){mode=m;document.getElementById('mFit').classList.toggle('on',m==='fit');
+  document.getElementById('mCanvas').classList.toggle('on',m==='canvas');drawDemo()}
+function drawDemo(){
+  const W=+wSlide.value,H=+hSlide.value,P=+pSlide.value;
+  wVal.textContent=W;hVal.textContent=H;pVal.textContent=P;
+  const sw=stage.clientWidth,sh=stage.clientHeight;
+  const cx=(sw-W)/2, cy=(sh-H)/2;
+  cnv.style.cssText=`left:${cx}px;top:${cy}px;width:${W}px;height:${H}px;position:absolute;border:1.5px dashed var(--accent)`;
+  let aw,ah,note;
+  if(mode==='fit'){
+    const iw=Math.max(1,W-P*2), ih=Math.max(1,H-P*2);
+    const s=Math.min(iw/AW, ih/AH);
+    aw=AW*s; ah=AH*s;
+    padEl.style.cssText=`left:${P}px;top:${P}px;width:${W-P*2}px;height:${H-P*2}px;position:absolute;border:1px dotted var(--good)`;
+    padEl.style.display=P>0?'block':'none';
+    note=`fit: scale ×${s.toFixed(2)} into ${iw}×${ih}, center on ${W}×${H}`;
+  }else{
+    aw=AW; ah=AH; padEl.style.display='none';
+    note=`canvas: original 240×160 centered on ${W}×${H}${(AW>W||AH>H)?' — overflow CROPPED':''} (padding ignored)`;
+  }
+  asset.style.cssText=`left:${cx+(W-aw)/2}px;top:${cy+(H-ah)/2}px;width:${aw}px;height:${ah}px;position:absolute;
+    background:linear-gradient(135deg,#ffb74d,#ff8a65);border-radius:6px;display:flex;align-items:center;
+    justify-content:center;color:#3a1f00;font-weight:700;font-size:.7rem;
+    clip-path:inset(${Math.max(0,(ah-H)/2)}px ${Math.max(0,(aw-W)/2)}px ${Math.max(0,(ah-H)/2)}px ${Math.max(0,(aw-W)/2)}px)`;
+  asset.textContent='ASSET 240×160';
+  readout.textContent=note;
+}
+['wSlide','hSlide','pSlide'].forEach(id=>document.getElementById(id).addEventListener('input',drawDemo));
+window.addEventListener('resize',drawDemo);
+setTimeout(drawDemo,50);
+
+/* ---------- path resolver ---------- */
+const treeData={name:'(document root)',type:'f',children:[
+  {name:'Jackpots',type:'f',children:[
+    {name:'grand',type:'f',children:[{name:'glow',type:'l'},{name:'coins',type:'l'},{name:'text',type:'l'}]},
+    {name:'major',type:'f',children:[{name:'glow',type:'l'},{name:'gem',type:'l'}]},
+    {name:'minor',type:'f',children:[{name:'base',type:'l'}]}
+  ]},
+  {name:'LowSymbols',type:'f',children:[
+    {name:'3_A',type:'l'},{name:'2_K',type:'l'},{name:'1_Q',type:'l'},{name:'0_J',type:'l'}
+  ]},
+  {name:'Symbols [ALL]',type:'f',children:[{name:'sheet',type:'l'}]},
+  {name:'Background',type:'l'}
+]};
+const treeEl=document.getElementById('tree');
+let nodeEls=[];
+function renderTree(node,depth,idPath){
+  const el=document.createElement('div');
+  el.className=node.type; el.style.paddingLeft=(depth*22+6)+'px';
+  el.textContent=node.name+(node.type==='f'&&depth>0?'  (group)':'');
+  el.dataset.key=idPath;
+  el.onclick=()=>{document.getElementById('pathInput').value=idPath.split('§').slice(1).join('/');resolvePathDemo()};
+  treeEl.appendChild(el); nodeEls.push(el);
+  (node.children||[]).forEach(c=>renderTree(c,depth+1,idPath+'§'+c.name));
+}
+renderTree(treeData,0,'root');
+function resolvePathDemo(){
+  nodeEls.forEach(e=>e.classList.remove('hit'));
+  const p=document.getElementById('pathInput').value;
+  const segs=p.split('/').map(s=>s.trim()).filter(s=>s.length);
+  let cur=treeData, key='root', ok=segs.length>0;
+  for(const seg of segs){
+    if(!cur||!cur.children){ok=false;break}
+    let child=null;
+    if(/^\[\d+\]$/.test(seg)){
+      const i=parseInt(seg.slice(1,-1),10);
+      if(i>=0&&i<cur.children.length)child=cur.children[i];
+    }else{
+      child=cur.children.find(c=>c.name.trim()===seg)||null;
+    }
+    if(!child){ok=false;break}
+    key+='§'+child.name; cur=child.type==='f'?child:null;
+    var last=child;
+  }
+  const res=document.getElementById('pathResult');
+  if(ok){
+    const el=nodeEls.find(e=>e.dataset.key===key); if(el)el.classList.add('hit');
+    res.innerHTML=last.type==='f'
+      ?`<span class="good">✔ resolves to GROUP "${last.name}" → whole group flattens to ONE image</span>`
+      :`<span class="good">✔ resolves to LAYER "${last.name}" → exported as a single layer</span>`;
+  }else{
+    res.innerHTML=`<span class="bad">✘ unresolved — this row would be skipped &amp; reported in the summary</span>`;
+  }
+}
+document.getElementById('pathInput').addEventListener('input',resolvePathDemo);
+resolvePathDemo();
+
+/* ---------- quiz ---------- */
+const quiz=[
+ {q:"A CSV row's Path points at a folder. What happens?",
+  o:["Each child layer exports as its own file","The whole folder flattens into ONE image","The row errors out"],a:1,
+  w:"Folder = flatten, always. If you want N images, you write N rows — every output traces to exactly one row."},
+ {q:"Why does the script duplicate the document before exporting?",
+  o:["Duplicates render faster","So destructive ops (crop, resize, rasterize) never touch the artist's PSD","Photoshop requires it for scripting"],a:1,
+  w:"All work happens on the copy; the original is auto-saved and never modified. There's even a guard that aborts if the active doc is still the source."},
+ {q:"Why is merge() never used to flatten groups?",
+  o:["It's too slow","Merging a Pass-Through group bakes a black backdrop, killing transparency","merge() is deprecated"],a:1,
+  w:"Instead the group is isolated (all else hidden) and the save's composite flattens it — transparency preserved."},
+ {q:"Layer styles are rasterized BEFORE crop/resize because…",
+  o:["It's faster","Live effects re-render at the new size and look mis-scaled; baked pixels scale with the art","Styles can't be exported at all"],a:1,
+  w:"A live 10px drop shadow is still 10px after a 4× downscale — visibly wrong. Baked at native scale, it shrinks with the art."},
+ {q:"In fit mode with W=300, H=300, Padding=50, the asset is scaled to fit inside…",
+  o:["300×300","250×250","200×200"],a:2,
+  w:"(W − pad×2) × (H − pad×2) = 200×200, then centered on the exact 300×300 canvas."},
+ {q:"A row's path has a typo. What does the run do?",
+  o:["Aborts immediately","Exports a blank canvas for that row","Skips the row, exports everything else, reports it in the summary"],a:2,
+  w:"Validation resolves all rows up front; failures are collected and reported, never fatal."},
+ {q:"Why are scope roots re-found by layer id instead of index?",
+  o:["Ids are shorter","Pruning sibling groups shifts indices; stable ids survive it","Indices are case-sensitive"],a:1,
+  w:"Out-of-scope top-level groups are deleted from the duplicate for speed — an index lookup after that would hit the wrong group; an id lookup stays valid."},
+ {q:"In the Spine → MP4 exporter, why is ffmpeg needed?",
+  o:["Spine CLI can't write video — it exports PNG sequences that ffmpeg assembles","ffmpeg upscales the animations","To add audio"],a:0,
+  w:"Two-stage pipeline: Spine CLI renders frames, ffmpeg encodes them into consistent, centered MP4s."}
+];
+const qb=document.getElementById('quizBox');
+quiz.forEach((item,qi)=>{
+  const d=document.createElement('div');d.className='q card';
+  d.innerHTML=`<b>${qi+1}. ${item.q}</b><div class="opts">${item.o.map((o,oi)=>`<button data-q="${qi}" data-o="${oi}">${o}</button>`).join('')}</div><div class="why" id="why${qi}">💡 ${item.w}</div>`;
+  qb.appendChild(d);
+});
+qb.addEventListener('click',e=>{
+  if(e.target.tagName!=='BUTTON')return;
+  const qi=+e.target.dataset.q, oi=+e.target.dataset.o, item=quiz[qi];
+  const btns=e.target.parentElement.querySelectorAll('button');
+  btns.forEach((b,i)=>{b.classList.remove('right','wrong');if(i===item.a)b.classList.add('right')});
+  if(oi!==item.a)e.target.classList.add('wrong');
+  document.getElementById('why'+qi).classList.add('show');
+});
+</script>
+</body>
+</html>

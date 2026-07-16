@@ -1,0 +1,30 @@
+# Minimal Step 1 drill example. "frame" is a Smart Object; "Symbols" is a normal group.
+
+Width,Height,Padding,Filename,Mode,Path
+
+500,500,10,Asseets/asset_00,fit,111
+500,500,10,Asseets/asset_01,fit,222
+500,500,10,Asseets/asset_02,fit,333
+500,500,10,Asseets/asset_03,fit,444
+
+250,250,10,Folder/asset_04,fit,ABCD/AAA
+250,250,10,Folder/asset_05,fit,ABCD/BBB
+250,250,10,Folder/asset_06,fit,ABCD/CCC
+250,250,10,Folder/asset_07,fit,ABCD/DDD
+
+500,500,10,Smart Object/soAsset,fit,EFGH
+
+250,250,10,Smart Object/so_asset_00,fit,EFGH::EEE
+250,250,10,Smart Object/so_asset_01,fit,EFGH::FFF
+250,250,10,Smart Object/so_asset_02,fit,EFGH::GGG
+250,250,10,Smart Object/so_asset_03,fit,EFGH::HHH
+
+250,250,10,Smart Object/so_asset_04,fit,EFGH::LMNO/LLL
+250,250,10,Smart Object/so_asset_05,fit,EFGH::LMNO/MMM
+250,250,10,Smart Object/so_asset_06,fit,EFGH::LMNO/NNN
+250,250,10,Smart Object/so_asset_07,fit,EFGH::LMNO/OOO
+
+250,250,10,Smart Object/serial/so_asset_04,fit,EFGH::LMNO/[0]
+250,250,10,Smart Object/serial/so_asset_05,fit,EFGH::LMNO/[1]
+250,250,10,Smart Object/serial/so_asset_06,fit,EFGH::LMNO/[2]
+250,250,10,Smart Object/serial/so_asset_07,fit,EFGH::LMNO/[3]

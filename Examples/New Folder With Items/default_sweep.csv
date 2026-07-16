@@ -1,0 +1,55 @@
+# =============================================================
+# Example: default: sweep — export a whole scope automatically.
+# =============================================================
+# A block may declare a "default:" rule. When present, the block sweeps its
+# entire scope and exports EVERY asset at that default, EXCEPT assets a listed
+# row names — those rows override the default and the sweep skips them ("claim").
+#
+#   default: <mode> [WxH] <depth>
+#     mode : trimmed (own size, content-cropped) | fit WxH | canvas WxH
+#     depth: direct    (only the scope's direct children)
+#            recursive (every leaf layer in the tree, mirrored into subfolders)
+#
+# OUTPUT FOLDERS (important):
+#   * Listed rows obey  folder:  ->  OUT/<folderName>/
+#   * The swept "rest"  goes to the ROOT export folder  ->  OUT/
+#     (recursive sweep mirrors each leaf's group path under OUT/, e.g.
+#      OUT/Jackpots/major/<leaf>.png)
+#
+# CLAIM: a row claims the asset it targets AND that asset's whole subtree, so
+# the sweep never re-exports it. In a DIRECT sweep, a child group that contains
+# any claimed asset is left untouched (it is not flattened) — the rows handle it.
+#
+# With NO default: line a block behaves as before (only listed rows export).
+# Adjust group/layer names to match your PSD.
+# =============================================================
+
+# --- Block 1: DIRECT sweep of BSP [ALL]. The five Values are listed (overrides)
+# and land in OUT/Values/. Every OTHER direct child of BSP [ALL] is swept at
+# canvas 400x400 to OUT/ root. The "Values" group is NOT flattened, because its
+# children are claimed by the rows below.
+default: canvas 400x400 direct
+scope: BSP [ALL]  folder: Values
+Width,Height,Padding,Filename,Mode,Path
+400,400,0,Value_7,canvas,Values/[0]
+400,400,0,Value_10,canvas,Values/[1]
+400,400,0,Value_15,canvas,Values/[2]
+400,400,0,Value_25,canvas,Values/[3]
+400,400,0,Value_192,canvas,Values/[4]
+
+# --- Block 2: RECURSIVE sweep of Symbols [ALL]. Every leaf is exported trimmed
+# to OUT/, mirrored into its group folders (OUT/LowSymbols/3_A.png,
+# OUT/Jackpots/major/<leaf>.png, ...). The Jackpots/grand row claims that whole
+# subgroup: it is flattened to grand_special at 512x512 into OUT/picks/, and the
+# sweep does NOT descend into grand.
+default: trimmed recursive
+scope: Symbols [ALL]  folder: picks
+Width,Height,Padding,Filename,Mode,Path
+512,512,0,grand_special,fit,Jackpots/grand
+
+# --- Block 3: NO default: line — classic behavior, only the listed rows export
+# (to OUT/extras/); nothing is swept.
+scope: Symbols [ALL]  folder: extras
+Width,Height,Padding,Filename,Mode,Path
+293,290,0,wild,fit,Wild/Text
+280,280,0,bonus,fit,Bonus Symbols
