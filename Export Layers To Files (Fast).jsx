@@ -946,12 +946,17 @@ function stampVisibleToLayer() {
 }
 // Shared effect branch for non-raster targets: stamp the isolated composite, hide the
 // sources, filter the stamp. The stamp becomes the only visible layer, so the trim/save
-// that follow capture exactly the filtered composite.
+// that follow capture exactly the filtered composite. The stamp may be created inside the
+// target's parent group (or the target group itself), which the hide pass just hid -- a
+// filter on a layer with a hidden ancestor throws "cannot apply a filter to a hidden
+// layer", so force every ancestor group visible again, same as the isolation walk.
 function applyEffectsViaStamp(target, effects) {
     try { app.activeDocument.activeLayer = target; } catch (eAct) { /* MrgV needs an active layer */ }
     var stamp = stampVisibleToLayer();
     hideAllLayersDeep(app.activeDocument.layers);
     stamp.visible = true;
+    var anc = stamp.parent;
+    while (anc && anc.typename === "LayerSet") { anc.visible = true; anc = anc.parent; }
     applyEffectsToLayer(stamp, effects);
 }
 
