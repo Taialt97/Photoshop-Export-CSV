@@ -1054,12 +1054,61 @@ function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, 
 // The prefix key groups rows that can share an opened chain: all "::" segments except the last.
 function drillPrefixKey(segs) { return segs.slice(0, segs.length - 1).join("::"); }
 
-// The render key groups rows that produce the SAME rendered image: same source Path and same
-// Width/Height/Padding/Mode. Consecutive rows with an equal render key differ only in their
-// output Filename, so they are rendered once and saved to each destination (Step 6). Two rows
-// with the same Path but a different size get different keys and each render independently.
+// The render key groups rows that produce the SAME rendered image: same source Path, same
+// Width/Height/Padding/Mode, and same pre-export effects. Consecutive rows with an equal render
+// key differ only in their output Filename, so they are rendered once and saved to each
+// destination (Step 6). Two rows with the same Path but a different size (or different effects)
+// get different keys and each render independently.
 function renderKey(row) {
-    return row.path + "|" + row.width + "|" + row.height + "|" + row.padding + "|" + row.mode;
+    var k = row.path + "|" + row.width + "|" + row.height + "|" + row.padding + "|" + row.mode;
+    if (row.effectTokens && row.effectTokens.length > 0) { k += "|" + row.effectTokens.join(" "); }
+    return k;
+}
+
+// ----- Pre-export effect registry -----
+// An effect token is "name:arg:arg..." carried in the Mode field after the size mode
+// ("fit mblur:45:20"). parseEffectToken validates one token into an effect object (the
+// validation half of the registry); applyEffectToLayer (further down, with the export
+// functions) is the application half. Unknown names / bad args are LOUD validation errors --
+// the row is skipped, never silently exported without its effect.
+function parseEffectToken(tok) {
+    var bits = String(tok).split(":");
+    var name = bits[0];
+    if (name === "mblur") {
+        if (bits.length !== 3) {
+            return { ok: false, error: "\"" + tok + "\" -- mblur needs angle:distance (e.g. mblur:45:20)" };
+        }
+        var angle = parseInt(bits[1], 10);
+        var dist = parseInt(bits[2], 10);
+        if (isNaN(angle) || angle < -360 || angle > 360) {
+            return { ok: false, error: "\"" + tok + "\" -- angle must be an integer -360..360" };
+        }
+        if (isNaN(dist) || dist < 1 || dist > 2000) {
+            return { ok: false, error: "\"" + tok + "\" -- distance must be an integer 1..2000 px" };
+        }
+        return { ok: true, effect: { name: "mblur", angle: angle, distance: dist } };
+    }
+    return { ok: false, error: "\"" + tok + "\" -- unknown effect \"" + name + "\"" };
+}
+// Parse a row's raw effect tokens. Returns { ok:true, effects:[...] } or { ok:false, error }.
+function parseRowEffects(effectTokens) {
+    var effects = [];
+    for (var i = 0; i < effectTokens.length; i++) {
+        var r = parseEffectToken(effectTokens[i]);
+        if (!r.ok) { return { ok: false, error: r.error }; }
+        effects.push(r.effect);
+    }
+    return { ok: true, effects: effects };
+}
+// Human-readable effect list for the summary ("mblur 45deg/20px").
+function describeEffects(effects) {
+    var out = [];
+    for (var i = 0; i < effects.length; i++) {
+        var e = effects[i];
+        if (e.name === "mblur") { out.push("mblur " + e.angle + "deg/" + e.distance + "px"); }
+        else { out.push(e.name); }
+    }
+    return out.join(", ");
 }
 
 // Open the SO chain named by prefixSegs (segs minus the final segment) so subsequent rows with
@@ -1296,6 +1345,8 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     var sweptEligibleTotal = 0; // swept (non-claimed) assets across all default: blocks
     var drillRecognized = [];  // "::" rows whose prefix is a Smart Object (recognized, not yet exported)
     var drillBadPrefix = [];   // "::" rows whose prefix resolves but is NOT a Smart Object (loud error)
+    var badEffects = [];       // rows with an invalid effect token (loud error, row skipped)
+    var effectRows = [];       // rows with recognized pre-export effects (informational)
     for (var jv = 0; jv < jobs.length; jv++) {
         var jobV = jobs[jv];
         var rootV = jobRoot(jobV);
@@ -1303,6 +1354,20 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         jobV.claimIds = {}; // stable ids of assets a listed row targets (sweep skips these)
         for (var rv = 0; rv < jobV.rows.length; rv++) {
             var rowV = jobV.rows[rv];
+            // Validate any pre-export effect tokens FIRST: a bad token is a loud error and the
+            // row is skipped entirely (never silently exported without its effect).
+            rowV.effects = [];
+            rowV.effectError = false;
+            if (rowV.effectTokens && rowV.effectTokens.length > 0) {
+                var pe = parseRowEffects(rowV.effectTokens);
+                if (!pe.ok) {
+                    rowV.effectError = true;
+                    badEffects.push(folderLabel + rowV.path + "  " + pe.error);
+                    continue;
+                }
+                rowV.effects = pe.effects;
+                effectRows.push(folderLabel + rowV.path + " -- " + describeEffects(rowV.effects));
+            }
             // Resolve the FIRST drill segment only. For a non-"::" path this is the whole path,
             // so the call is byte-for-byte identical to today. For a "::" path it lands on the
             // prefix (the Smart Object) that the export pass opens and drills into.
@@ -1366,7 +1431,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         var head = DRY_RUN ? "DRY RUN (no files written)." :
             "Nothing to export: no CSV row resolved to a layer or folder.";
         showCsvSummary(head, 0, failures, warnings, badScopes, unresolvedRows, collisions,
-            drillRecognized, drillBadPrefix, dupDurationMs, profiler.format(profiler.getDuration(true, true)), CSV_SO_OPENS);
+            drillRecognized, drillBadPrefix, badEffects, effectRows, dupDurationMs, profiler.format(profiler.getDuration(true, true)), CSV_SO_OPENS);
         return 0;
     }
 
@@ -1400,6 +1465,18 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                 var rr = re + 1;
                 while (rr < job.rows.length && renderKey(job.rows[rr]) === runKey) {
                     runRows.push(job.rows[rr]); rr++;
+                }
+                if (row0.effectError) {
+                    // Bad effect token: already reported loudly by validation; never export
+                    // the row without its effect. (Rows in a run share the same tokens.)
+                    done += runRows.length;
+                    re = rr;
+                    if (progressBarWindow) {
+                        updateProgressBar(progressBarWindow, "Exporting " + done + " of " + progressTotal + "...");
+                        repaintProgressBar(progressBarWindow);
+                        if (userCancelled) { break; }
+                    }
+                    continue;
                 }
                 if (isDrillPath(row0.path)) {
                     // Drill run: reuse the open chain if its prefix matches, else (re)open it.
@@ -1490,7 +1567,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         (sweptTotal > 0 ? (" (" + sweptTotal + " swept)") : "") + "." +
         (userCancelled ? "  (cancelled early)" : "");
     showCsvSummary(head, retVal.count, failures, warnings, badScopes, unresolvedRows, collisions,
-        drillRecognized, drillBadPrefix, dupDurationMs, exportDuration, CSV_SO_OPENS);
+        drillRecognized, drillBadPrefix, badEffects, effectRows, dupDurationMs, exportDuration, CSV_SO_OPENS);
 
     // Open the output folder when done.
     try { (new Folder(prefs.destination)).execute(); } catch (eOpen) { }
@@ -1501,7 +1578,7 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
 // Build and show the end-of-run CSV summary. Bad scopes are surfaced first and loud
 // (a bad scope silently drops a whole branch the user intended to export). Timing is
 // always included so duplicate() vs export cost can be compared later.
-function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, drillRecognized, drillBadPrefix, dupDurationMs, exportDurationStr, soOpens) {
+function showCsvSummary(headline, count, failures, warnings, badScopes, unresolvedRows, collisions, drillRecognized, drillBadPrefix, badEffects, effectRows, dupDurationMs, exportDurationStr, soOpens) {
     var maxPer = 10;
     function section(title, items) {
         if (!items || items.length === 0) { return ""; }
@@ -1512,17 +1589,19 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     var msg = headline;
     msg += section("** BAD SCOPE — whole branch skipped **", badScopes);
     msg += section("** DRILL PREFIX NOT A SMART OBJECT **", drillBadPrefix);
+    msg += section("** BAD EFFECT — row skipped **", badEffects);
     msg += section("Unresolved rows (skipped)", unresolvedRows);
     msg += section("Errors", failures);
     msg += section("Duplicate-name overwrites", collisions);
     msg += section("SO-drill rows (drilled into a Smart Object)", drillRecognized);
+    msg += section("Effect rows (pre-export effects)", effectRows);
     msg += section("Warnings", warnings);
     msg += "\n\nTiming:  duplicate " + formatMs(dupDurationMs) + "   +   export " + exportDurationStr;
     if (soOpens && soOpens > 0) { msg += "\nSmart Object opens: " + soOpens; }
     if (CSV_RENDERS > 0 && CSV_RENDERS < count) {
         msg += "\nRenders: " + CSV_RENDERS + " (saved " + count + " files -- " + (count - CSV_RENDERS) + " reused a cached render)";
     }
-    var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0);
+    var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0) || (badEffects && badEffects.length > 0);
     alert(msg, "CSV Export Summary", isError);
 }
 
@@ -1959,12 +2038,19 @@ function parseCsvFile(filePath) {
                 return { blocks: [] };
             }
 
-            // The field before Path is Mode only when it is a known keyword; otherwise
-            // Mode defaults to "fit" and that field is part of the Filename (so an
-            // unquoted comma inside a filename is preserved via the join below).
+            // The field before Path is Mode only when its FIRST whitespace token is a known
+            // keyword; otherwise Mode defaults to "fit" and that field is part of the Filename
+            // (so an unquoted comma inside a filename is preserved via the join below).
+            // Tokens after the size mode are pre-export effect specs ("fit mblur:45:20"),
+            // stored raw here and validated in the up-front validation pass.
             var modeField = csvTrim(parts[parts.length - 2]).toLowerCase();
-            var hasMode = (modeField === "fit" || modeField === "canvas");
-            var mode = hasMode ? modeField : "fit";
+            var modeToks = [];
+            var rawToks = modeField.split(/\s+/);
+            for (var mt = 0; mt < rawToks.length; mt++) { if (rawToks[mt].length > 0) { modeToks.push(rawToks[mt]); } }
+            var hasMode = modeToks.length > 0 && (modeToks[0] === "fit" || modeToks[0] === "canvas");
+            var mode = hasMode ? modeToks[0] : "fit";
+            var effectTokens = [];
+            if (hasMode) { for (var et = 1; et < modeToks.length; et++) { effectTokens.push(modeToks[et]); } }
             var fnEnd = hasMode ? (parts.length - 2) : (parts.length - 1);
 
             var nameParts = [];
@@ -1996,7 +2082,7 @@ function parseCsvFile(filePath) {
             for (var fi = 0; fi < fnParts.length; fi++) {
                 var oneName = csvTrim(fnParts[fi]);
                 if (oneName.length === 0) { continue; }
-                current.rows.push({ width: w, height: h, padding: p, filename: oneName, mode: mode, path: pathStr });
+                current.rows.push({ width: w, height: h, padding: p, filename: oneName, mode: mode, path: pathStr, effectTokens: effectTokens });
                 pushedAny = true;
             }
             if (!pushedAny) {
