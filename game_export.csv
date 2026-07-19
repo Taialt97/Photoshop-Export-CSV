@@ -1,0 +1,164 @@
+# game_export.csv — target manifest generated from Downloads/attachments
+# Every static asset of the pack: Filename (output folder/name) and exact Width x Height
+# are pre-filled from the real files. COMPLETE THE Path COLUMN (last field) for each row:
+#   Group/Layer      walks groups     ::   drills into a Smart Object     [n]  = n-th child (top = 0)
+# Rows with an empty Path are skipped & reported, so a partially completed file runs safely.
+# Tip: open row-builder.html to click paths together against your PSD's layer tree.
+# NOTE: bg/bg is a .jpg in the pack — this script exports ONE format per run (rest are .png).
+
+Width,Height,Padding,Filename,Mode,Path
+
+# ---- BSPTransitionInEffect ----
+# 1524,1526,0,BSPTransitionInEffect/transition_in_circle,fit, 
+
+# ---- attachments ----
+350,350,0,attachments/16,canvas,Jackpots Section [ALL]/JackpotsSection::Grand/Grand
+350,350,0,attachments/17,canvas,Jackpots Section [ALL]/JackpotsSection::Major/Major
+350,350,0,attachments/18,canvas,Jackpots Section [ALL]/JackpotsSection::Minor/Minor
+350,350,0,attachments/19,canvas,Jackpots Section [ALL]/JackpotsSection::Mini/Mini
+
+# ---- bg ---- 
+# 3840,3840,0,bg/bg,canvas,GameBackground/Background
+
+# ---- bigwin ----
+0,0,0,bigwin/counter_glow,fit,TotalWin/BackGlow
+0,0,0,bigwin/total_win_glow,fit,TotalWin/BackGlow
+0,0,0,bigwin/normal_win_counter_glow,fit,Big Win/Back Glow
+
+# ---- bonus_mini_game ---- bonus_mini_game_blur ----
+500,500,0,bonus_mini_game/symbol_10,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_11,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_12,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_13,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_14,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_15,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_16,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_17,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_18,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game/symbol_19,canvas,Extra Exports/bonus_mini_game::Bonus
+# ----
+500,500,0,bonus_mini_game_blur/symbol_10,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_11,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_12,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_13,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_14,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_15,canvas,ExpExtra Exportsorts/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_16,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_17,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_18,canvas,Extra Exports/bonus_mini_game::Bonus
+500,500,0,bonus_mini_game_blur/symbol_19,canvas,Extra Exports/bonus_mini_game::Bonus
+# ----
+500,500,0,bonus_mini_game/symbol_20,canvas,Extra Exports/bonus_mini_game::Bonus Collect
+500,500,0,bonus_mini_game_blur/symbol_20,canvas,Extra Exports/bonus_mini_game::Bonus Collect
+# ----
+500,500,0,bonus_mini_game/symbol_21,canvas,Extra Exports/bonus_mini_game::Coin With Background
+500,500,0,bonus_mini_game_blur/symbol_21,canvas,Extra Exports/bonus_mini_game::Coin With Background
+
+# ---- bonus_slot ----
+0,0,0,bonus_slot/dividers,fit,Bonus Game Layout/Slot::Frame with seperators/Separators
+0,0,0,bonus_slot/frame,fit,Bonus Game Layout/Slot::Separators or Compleate Frame/Bonus Frame
+1471,878,0,bonus_slot/slot_bonus_bg,fit,Bonus Game Layout/Slot::SlotBonusBackground
+0,0,0,bonus_slot/static_middle_glow,fit,Bonus Game Layout/Slot::StaticMiddleGlow
+0,0,0,bonus_slot/static_section_glow,fit,Bonus Game Layout/Slot::StaticSectionGlow
+
+# ---- BSPTransitionInEffect ----
+1524,1526,0,BSPTransitionInEffect/transition_in_circle,fit,BSP/Circle
+
+# ---- flare ---- what is it used for
+# 127,128,0,flare/flare,fit,
+
+# ---- gametitle ----
+0,0,0,gametitle/title,fit,GameTitle
+
+# ---- jackpotcontainers ----
+0,0,0,jackpotcontainers/grand_bar,fit,Jackpots Section [ALL]/JackpotsSection::Grand 
+0,0,0,jackpotcontainers/major_bar,fit,Jackpots Section [ALL]/JackpotsSection::Major 
+0,0,0,jackpotcontainers/mini_bar,fit,Jackpots Section [ALL]/JackpotsSection::Minor
+0,0,0,jackpotcontainers/minor_bar,fit,Jackpots Section [ALL]/JackpotsSection::Mini 
+
+# ---- line_display ----
+1468,120,0,line_display/line_display,fit,NormalWin/Coin Animation & Win Lines/WinLines/1
+1471,672,0,line_display/line_five,fit,NormalWin/Coin Animation & Win Lines/WinLines/5
+1471,672,0,line_display/line_four,fit,NormalWin/Coin Animation & Win Lines/WinLines/4
+
+# ---- mainsplash ----
+0,0,0,mainsplash/back_glow,fit,MainSplash/BackGlow
+0,0,0,mainsplash/main_splash_screen,fit,MainSplash/MainSplashScreen
+0,0,0,mainsplash/main_splash_title,fit,MainSplash/Top Section/Hold & Hit 3x3 Container
+0,0,0,mainsplash/start_button,fit,MainSplash/Start Button/Button
+0,0,0,mainsplash/top_character,fit,MainSplash/Top Section/Top Character All Modes
+
+# ---- mask ----
+188,206,0,mask/Mask,fit,Extra Exports/Mask
+
+# ---- particles ---- what is it used for
+100,100,0,particles/blue_particle,fit,Extra Exports/blue_particle
+100,88,0,particles/spark,fit,Extra Exports/spark
+
+# ---- reel_glow ----
+0,0,0,reel_glow/reel_activated_glow,fit,Slot Container/Reel Glow/Bottom Glow Indicators/On
+0,0,0,reel_glow/reel_glow,fit,Slot Container/Reel Glow/Reel Glows/Glow
+
+# ---- sentences/en_us ----
+0,0,0,sentences/en_us/win_win_sentence,fit,Big Win/Sentances/Win
+0,0,0,sentences/en_us/epic_win_sentence,fit,Big Win/Sentances/Epic
+0,0,0,sentences/en_us/super_win_sentence,fit,Big Win/Sentances/Super
+0,0,0,sentences/en_us/mega_win_sentence,fit,Big Win/Sentances/Mega
+0,0,0,sentences/en_us/big_win_sentence,fit,Big Win/Sentances/Big
+
+# ---- slot ----
+1470,891,0,slot/anticipation_bg_glow,fit,Slot Container/Anticipation Glow
+1471,942,0,slot/bg,fit,Slot Container/Slot Reels and Background
+0,0,0,slot/frame,fit,Slot Container/Main Frame
+
+# ---- symbols ----
+1080,1080,0,symbols/symbol_0,canvas,Symbols [ALL]/LowSymbols/[3]
+1080,1080,0,symbols/symbol_1,canvas,Symbols [ALL]/LowSymbols/[2]
+1080,1080,0,symbols/symbol_2,canvas,Symbols [ALL]/[LowSymbols/1]
+1080,1080,0,symbols/symbol_3,canvas,Symbols [ALL]/LowSymbols/[0]
+1080,1080,0,symbols/symbol_4,canvas,Symbols [ALL]/MediumSymbols/[3]
+1080,1080,0,symbols/symbol_5,canvas,Symbols [ALL]/MediumSymbols/[2]
+1080,1080,0,symbols/symbol_6,canvas,Symbols [ALL]/MediumSymbols/[1]
+1080,1080,0,symbols/symbol_7,canvas,Symbols [ALL]/MediumSymbols/[0]
+500,395,0,symbols/symbol_8,fit,Symbols [ALL]/Bonus Symbol
+1080,1080,0,symbols/symbol_9,canvas,Symbols [ALL]/Wild
+500,395,0,symbols/symbol_10,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_11,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_12,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_13,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_14,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_15,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_16,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_17,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_18,fit,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols/symbol_19,fit,Symbols [ALL]/Bonus Symbol
+570,570,0,symbols/symbol_20,fit,Symbols [ALL]/Bonus Collect Center
+
+# ---- top_bar ----
+0,0,0,top_bar/base,fit,Bonus Game Layout/BonusProgressBar::Background
+# 0,0,0,top_bar/empty_bars,fit,
+0,0,0,top_bar/frame,fit,Bonus Game Layout/BonusProgressBar::frame
+0,0,0,top_bar/one,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/1
+0,0,0,top_bar/two,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/2
+0,0,0,top_bar/three,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/3
+
+# ================================================================
+# NOT in this manifest — rendered animation sequences (not PSD exports):
+#   animations/anticipation/                                24 frames
+#   animations/bsp_loop/                                    43 frames
+#   animations/coins/                                       18 frames
+#   animations/lightning_hit/                               11 frames
+#   animations/marked_reels/                                16 frames
+#   animations/slot_lightning_hit/                          10 frames
+#   animations/symbols/bonus_maingame_idleloop/             30 frames
+#   animations/symbols/bonus_symbol_glow/                   19 frames
+#   animations/symbols/grand_spinning_coin_loop/            11 frames
+#   animations/symbols/major_spinning_coin_loop/            11 frames
+#   animations/symbols/mini_spinning_coin_loop/             11 frames
+#   animations/symbols/minor_spinning_coin_loop/            11 frames
+#   animations/symbols/special_bonus_symbol/                30 frames
+#   animations/symbols/special_bonus_symbol_glow/           19 frames
+#   animations/symbols/wild_win/                            20 frames
+#   animations/top_character/top_character_bonus_coin_flying/ 16 frames
+#   animations/top_character/top_character_coin_flying_spining/ 11 frames
+#   animations/top_character/top_character_glow_circle/     33 frames
