@@ -915,6 +915,21 @@ function bakeLayerStyleInPlace(layer) {
     } catch (eBake) { /* no layer style, or not rasterizable -- leave the layer untouched */ }
 }
 
+// Crop the (already-isolated) document to its rendered composite. Correct-by-construction
+// for adjustment / fill / mask / effect cases that inflate a layer's or group's reported
+// .bounds to the full canvas (an unmasked adjustment layer spans the whole document, so a
+// group containing one reports full-canvas bounds and the old crop exported the art floating
+// in a huge frame). Returns false when the isolated composite is fully transparent (nothing
+// rendered) so the caller can skip + warn instead of exporting a full-canvas empty image.
+function trimToRenderedPixels(doc) {
+    try {
+        doc.trim(TrimType.TRANSPARENT);   // trims to the visible (post-adjustment) alpha bbox
+        return true;
+    } catch (eTrim) {
+        return false;                     // fully-transparent composite: nothing to export
+    }
+}
+
 // Save the CURRENT (already isolated/cropped/sized) document to every destination in `rows`,
 // counting one saved file per row. Rows in the array share the same render (same Path + Width +
 // Height + Padding + Mode -- see renderKey); only their Filename/output folder differs, so this
@@ -977,8 +992,8 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
 }
 
 // Export one resolved LayerSet as a single flattened image for one or more destination rows:
-// isolate the group (hide all, re-show the whole group + ancestors), crop to the group's content
-// bounds, size, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
+// isolate the group (hide all, re-show the whole group + ancestors), trim to the rendered
+// composite, size, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
 // Flattening is done by saveImage's composite (not merge(), which bakes a black Pass-Through
 // backdrop), so transparency is preserved exactly like a layer row. restoreHistory undoes the
 // crop; the leading/trailing hide reset visibility. The caller re-resolves `ls` fresh per row
@@ -1001,14 +1016,14 @@ function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, 
         // Do NOT merge() the group: merging a Pass Through group (the default blend mode)
         // bakes a black backdrop into the result. saveImage already flattens the visible
         // composite into one image, so we just isolate the group (everything else hidden),
-        // crop to the group's content bounds, and save -- identical to the transparent
+        // crop to the rendered composite, and save -- identical to the transparent
         // single-layer path, which also relies on saveImage's composite rather than merging.
-        var b = ls.bounds;
-        if (!((b[0] < b[2]) && (b[1] < b[3]))) {
-            warnings.push("\"" + label + "\": flattened group has no pixels -- skipped");
+        // Trim (not ls.bounds): an adjustment/fill child inflates the group's reported
+        // bounds to the full canvas; the trim crops to what actually renders.
+        if (!trimToRenderedPixels(app.activeDocument)) {
+            warnings.push("\"" + label + "\": flattened group has no rendered pixels -- skipped");
             return;
         }
-        try { app.activeDocument.crop(ls.bounds); } catch (eCrop) { }
 
         applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
 
