@@ -933,6 +933,27 @@ function applyEffectToLayer(layer, ef) {
 function applyEffectsToLayer(layer, effects) {
     for (var i = 0; i < effects.length; i++) { applyEffectToLayer(layer, effects[i]); }
 }
+// Stamp the visible composite onto ONE new raster layer (Merge Visible as copy -- the
+// Cmd+Opt+Shift+E command, via ActionManager since the DOM lacks it). Source layers survive,
+// so the per-row restoreHistory undoes everything. Returns the new stamp layer (active).
+// A filter needs real pixels, so this is how groups / Smart Objects / text / shapes get
+// filtered: isolate as usual -> stamp -> hide the sources -> filter the stamp.
+function stampVisibleToLayer() {
+    var desc = new ActionDescriptor();
+    desc.putBoolean(charIDToTypeID("Dplc"), true);
+    executeAction(charIDToTypeID("MrgV"), desc, DialogModes.NO);
+    return app.activeDocument.activeLayer;
+}
+// Shared effect branch for non-raster targets: stamp the isolated composite, hide the
+// sources, filter the stamp. The stamp becomes the only visible layer, so the trim/save
+// that follow capture exactly the filtered composite.
+function applyEffectsViaStamp(target, effects) {
+    try { app.activeDocument.activeLayer = target; } catch (eAct) { /* MrgV needs an active layer */ }
+    var stamp = stampVisibleToLayer();
+    hideAllLayersDeep(app.activeDocument.layers);
+    stamp.visible = true;
+    applyEffectsToLayer(stamp, effects);
+}
 
 // Crop the (already-isolated) document to its rendered composite. Correct-by-construction
 // for adjustment / fill / mask / effect cases that inflate a layer's or group's reported
@@ -999,9 +1020,9 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
             if (isPlainPixelLayer(layer)) {
                 applyEffectsToLayer(layer, fxs);
             } else {
-                failures.push("\"" + label + "\": effects on this layer type need the stamp path (not yet implemented) -- row skipped");
-                retVal.error = true;
-                return;
+                // Smart Object / text / shape / adjustment target: filter a stamped copy of
+                // the isolated composite instead (a filter needs real pixels).
+                applyEffectsViaStamp(layer, fxs);
             }
         }
 
@@ -1045,6 +1066,14 @@ function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, 
         showLayerSetTree(ls);
         var anc = ls.parent;
         while (anc && anc.typename === "LayerSet") { anc.visible = true; anc = anc.parent; }
+
+        // Pre-export effects: a group can't take a filter directly, so stamp the isolated
+        // composite to one raster layer and filter that (before the trim, at native
+        // resolution, so the smear has room and the trim captures it).
+        var gfxs = rows[0].effects || [];
+        if (gfxs.length > 0) {
+            applyEffectsViaStamp(ls, gfxs);
+        }
 
         // Do NOT merge() the group: merging a Pass Through group (the default blend mode)
         // bakes a black backdrop into the result. saveImage already flattens the visible
