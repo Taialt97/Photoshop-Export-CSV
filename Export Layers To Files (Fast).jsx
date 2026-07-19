@@ -915,6 +915,25 @@ function bakeLayerStyleInPlace(layer) {
     } catch (eBake) { /* no layer style, or not rasterizable -- leave the layer untouched */ }
 }
 
+// ----- Pre-export effect application (the registry's second half; parsing/validation is
+// parseEffectToken, further up with the CSV helpers) -----
+
+// True for a plain raster pixel layer -- the only target a filter can hit in place.
+// Groups, Smart Objects, text, shapes and adjustment layers all need the stamp path.
+function isPlainPixelLayer(layer) {
+    try { return layer.typename === "ArtLayer" && layer.kind === LayerKind.NORMAL; } catch (e) { return false; }
+}
+// Apply one validated effect to a (raster) layer. Only mblur exists today; validation
+// already rejected unknown names, so reaching the throw means a registry bug, not user error.
+function applyEffectToLayer(layer, ef) {
+    if (ef.name === "mblur") { layer.applyMotionBlur(ef.angle, ef.distance); return; }
+    throw new Error("unhandled effect \"" + ef.name + "\"");
+}
+// Apply a row's effects in listed order (left-to-right in the Mode field).
+function applyEffectsToLayer(layer, effects) {
+    for (var i = 0; i < effects.length; i++) { applyEffectToLayer(layer, effects[i]); }
+}
+
 // Crop the (already-isolated) document to its rendered composite. Correct-by-construction
 // for adjustment / fill / mask / effect cases that inflate a layer's or group's reported
 // .bounds to the full canvas (an unmasked adjustment layer spans the whole document, so a
@@ -971,6 +990,20 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
         // Done before the trim so the baked-in effect extent is included. A layer with no
         // style makes this a harmless no-op (try/catch); restoreHistory undoes it per row.
         bakeLayerStyleInPlace(layer);
+
+        // Pre-export effects (e.g. motion blur) run at native resolution BEFORE the trim, so
+        // the smear has full-canvas room and the trim then captures it. A raster pixel layer
+        // takes the filter in place; any other target needs the stamp-visible path (Step 3).
+        var fxs = rows[0].effects || [];
+        if (fxs.length > 0) {
+            if (isPlainPixelLayer(layer)) {
+                applyEffectsToLayer(layer, fxs);
+            } else {
+                failures.push("\"" + label + "\": effects on this layer type need the stamp path (not yet implemented) -- row skipped");
+                retVal.error = true;
+                return;
+            }
+        }
 
         // Trim (not layer.bounds): an adjustment/fill layer reports full-canvas bounds; the
         // trim crops to what actually renders, and skips rows whose composite is empty.
