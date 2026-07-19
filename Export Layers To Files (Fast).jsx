@@ -952,8 +952,8 @@ function saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label)
 }
 
 // Export one resolved ArtLayer for one or more destination rows: isolate the layer (force it AND
-// every ancestor group visible, regardless of stored visibility), crop to its bounds, size per
-// the render, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
+// every ancestor group visible, regardless of stored visibility), trim to the rendered composite,
+// size per the render, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
 // Wrapped in store/restore history so the crop/resize are undone; visibility is reset by the
 // leading and trailing hideAllLayersDeep (restoreHistory does NOT undo visibility).
 function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, ext) {
@@ -968,16 +968,16 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
         // Bake a live layer style (fx) into real pixels at the document's native scale BEFORE
         // any crop/resize. Otherwise the effect re-renders at the new canvas size and appears
         // mis-scaled (seen on canvas mode); baked, it scales as flat pixels with the art.
-        // Done before reading bounds so the baked-in effect extent is included. A layer with no
+        // Done before the trim so the baked-in effect extent is included. A layer with no
         // style makes this a harmless no-op (try/catch); restoreHistory undoes it per row.
         bakeLayerStyleInPlace(layer);
 
-        var b = layer.bounds;
-        if (!((b[0] < b[2]) && (b[1] < b[3]))) {
-            warnings.push("\"" + label + "\": layer has no pixels -- skipped");
+        // Trim (not layer.bounds): an adjustment/fill layer reports full-canvas bounds; the
+        // trim crops to what actually renders, and skips rows whose composite is empty.
+        if (!trimToRenderedPixels(app.activeDocument)) {
+            warnings.push("\"" + label + "\": layer has no rendered pixels -- skipped");
             return;
         }
-        try { app.activeDocument.crop(layer.bounds); } catch (eCrop) { }
 
         applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
 
