@@ -1973,6 +1973,101 @@ function parseDefaultLine(trimmedLine) {
     return { ok: true, def: { mode: mode, w: w, h: h, depth: depth } };
 }
 
+// ----- Filename brace expansion -----
+// Bash-style {...} expansion inside the Filename column. A group EXPANDS when its content
+// is a pure integer range ("10..19", either direction) or a comma list whose items are
+// literals or ranges ("8,10..19"; empty items allowed, so "{,_blur}" works). Multiple
+// groups in one name multiply left-to-right: "a{,_blur}/s_{1..3}" -> 6 names. A "{...}"
+// matching neither form (or an unmatched "{") stays literal text and is reported as a
+// warning, so typos are loud without breaking names that really contain braces. Range
+// endpoints written with leading zeros pad every result to that width ("{01..10}").
+// Per-name expansion cap (guards against "{1..999999}"). A function, NOT a top-level
+// var: bootstrap() runs at line ~457, far above this point in the file, so a var
+// assignment here would still be undefined when the parser runs (only declarations
+// hoist). Function declarations hoist whole, so this is safe from anywhere.
+function braceCap() { return 1000; }
+
+// "a..b" (non-negative integers) -> { items: [number strings honoring zero-pad] },
+// { toobig: true } for a range wider than the cap, or null when not a range at all.
+function braceRangeItems(text) {
+    var m = String(text).match(/^(\d+)\.\.(\d+)$/);
+    if (!m) { return null; }
+    var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+    if (Math.abs(b - a) + 1 > braceCap()) { return { toobig: true }; }
+    var width = 0;
+    if (m[1].length > 1 && m[1].charAt(0) === "0") { width = m[1].length; }
+    if (m[2].length > 1 && m[2].charAt(0) === "0" && m[2].length > width) { width = m[2].length; }
+    var step = (a <= b) ? 1 : -1;
+    var out = [];
+    for (var v = a; ; v += step) {
+        var s = String(v);
+        while (s.length < width) { s = "0" + s; }
+        out.push(s);
+        if (v === b) { break; }
+    }
+    return { items: out };
+}
+
+// First expandable {...} group in `n` -> { start, end, items }, { toobig: true } when a
+// range inside it exceeds the cap, or null. A "{" whose content is not a valid
+// range/list is skipped over (stays literal) and the scan continues, so one bad group
+// doesn't disable a later good one.
+function findBraceGroup(n) {
+    var from = 0;
+    while (true) {
+        var open = n.indexOf("{", from);
+        if (open === -1) { return null; }
+        var close = n.indexOf("}", open + 1);
+        if (close === -1) { return null; }
+        var content = n.substring(open + 1, close);
+        var items = null;
+        if (content.indexOf(",") !== -1) {
+            var parts = content.split(",");
+            items = [];
+            for (var p = 0; p < parts.length; p++) {
+                var r = braceRangeItems(parts[p]);
+                if (r && r.toobig) { return { toobig: true }; }
+                if (r) { for (var q = 0; q < r.items.length; q++) { items.push(r.items[q]); } }
+                else { items.push(parts[p]); }
+            }
+        } else {
+            var pr = braceRangeItems(content); // pure range, or null (single literal item stays literal, like bash)
+            if (pr && pr.toobig) { return { toobig: true }; }
+            items = pr ? pr.items : null;
+        }
+        if (items && items.length > 0) { return { start: open, end: close, items: items }; }
+        from = open + 1;
+    }
+}
+
+// Expand one Filename entry. Returns { names: [...], literalBrace: bool } on success or
+// { error: message } when the expansion blows past braceCap(). literalBrace flags a
+// leftover "{"/"}" in a final name (unexpandable group kept as-is) for a parse warning.
+function expandBraces(name) {
+    var out = [];
+    var queue = [name];
+    var sawLiteralBrace = false;
+    while (queue.length > 0) {
+        var n = queue.shift();
+        var g = findBraceGroup(n);
+        if (g && g.toobig) {
+            return { error: "\"" + name + "\" has a {a..b} range wider than " + braceCap() + " -- row skipped" };
+        }
+        if (!g) {
+            if (n.indexOf("{") !== -1 || n.indexOf("}") !== -1) { sawLiteralBrace = true; }
+            out.push(n);
+            continue;
+        }
+        if (out.length + queue.length + g.items.length > braceCap()) {
+            return { error: "\"" + name + "\" expands to more than " + braceCap() + " filenames" };
+        }
+        var prefix = n.substring(0, g.start);
+        var suffix = n.substring(g.end + 1);
+        for (var i = 0; i < g.items.length; i++) { queue.push(prefix + g.items[i] + suffix); }
+    }
+    return { names: out, literalBrace: sawLiteralBrace };
+}
+
 // Parse the CSV manifest into a list of scope blocks (see the per-block format below).
 // Format: Width,Height,Padding,Filename,Mode,Path  (header auto-detected & skipped).
 //   - Width/Height/Padding may be empty (=> 0 => natural size).
@@ -1993,6 +2088,7 @@ function parseCsvFile(filePath) {
         return { blocks: blocks };
     }
     var skipped = [];
+    var nameWarnings = [];         // {...} kept literal in a Filename (row still exported)
     var current = null;            // block that data rows are appended to
     var expectingHeader = false;   // true right after a scope: line (header is mandatory)
     var implicitAutoHeader = true; // leading no-scope block keeps today's header auto-detect
@@ -2142,18 +2238,33 @@ function parseCsvFile(filePath) {
 
             // Multi-value Filename (Step 7): a ";"-separated list expands into consecutive
             // duplicate rows -- same Path + size, one per output name -- which the export cache
-            // renders once and saves to each destination (Step 6). A Filename with no ";" yields
-            // exactly one row, unchanged. Empty entries (";;", trailing ";") are skipped.
+            // renders once and saves to each destination (Step 6). Each ";" entry then goes
+            // through bash-style {...} expansion (expandBraces: "{10..19}" ranges,
+            // "{8,10..19}" lists, multiplying groups like "{,_blur}") -- every expanded name
+            // becomes its own row. A plain name yields exactly one row, unchanged.
+            // Empty entries (";;", trailing ";") are skipped.
             var fnParts = fn.split(";");
             var pushedAny = false;
+            var hadNameError = false;
             for (var fi = 0; fi < fnParts.length; fi++) {
                 var oneName = csvTrim(fnParts[fi]);
                 if (oneName.length === 0) { continue; }
-                current.rows.push({ width: w, height: h, padding: p, filename: oneName, mode: mode, path: pathStr, effectTokens: effectTokens });
-                pushedAny = true;
+                var exp = expandBraces(oneName);
+                if (exp.error) {
+                    skipped.push("line " + lineNum + ": " + exp.error);
+                    hadNameError = true;
+                    continue;
+                }
+                if (exp.literalBrace) {
+                    nameWarnings.push("line " + lineNum + ": \"" + oneName + "\" has a {...} that is not an {a..b} range or {a,b} list -- kept literally in the filename");
+                }
+                for (var xn = 0; xn < exp.names.length; xn++) {
+                    current.rows.push({ width: w, height: h, padding: p, filename: exp.names[xn], mode: mode, path: pathStr, effectTokens: effectTokens });
+                    pushedAny = true;
+                }
             }
             if (!pushedAny) {
-                skipped.push("line " + lineNum + ": Filename is required");
+                if (!hadNameError) { skipped.push("line " + lineNum + ": Filename is required"); }
                 continue;
             }
         }
@@ -2169,6 +2280,14 @@ function parseCsvFile(filePath) {
             lines += "\n...and " + (skipped.length - maxShown) + " more";
         }
         alert("Skipped " + skipped.length + " malformed CSV row(s):\n\n" + lines, "CSV Warning", false);
+    }
+    if (nameWarnings.length > 0) {
+        var maxShownW = 10;
+        var wlines = nameWarnings.slice(0, maxShownW).join("\n");
+        if (nameWarnings.length > maxShownW) {
+            wlines += "\n...and " + (nameWarnings.length - maxShownW) + " more";
+        }
+        alert("Filename {...} warning on " + nameWarnings.length + " row(s) -- rows still export, braces kept as literal text:\n\n" + wlines, "CSV Warning", false);
     }
     return { blocks: blocks };
 }
