@@ -1,0 +1,26 @@
+Width,Height,Padding,Filename,Mode,Path
+
+
+# ---- symbols_blur ----
+1080,1080,0,symbols_blur/symbol_0,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[3]
+1080,1080,0,symbols_blur/symbol_1,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[2]
+1080,1080,0,symbols_blur/symbol_2,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[1]
+1080,1080,0,symbols_blur/symbol_3,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[0]
+1080,1080,0,symbols_blur/symbol_4,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[3]
+1080,1080,0,symbols_blur/symbol_5,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[2]
+1080,1080,0,symbols_blur/symbol_6,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[1]
+1080,1080,0,symbols_blur/symbol_7,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[0]
+1080,1080,0,symbols_blur/symbol_9,canvas mblur:90:30,Symbols [ALL]/Wild
+500,395,0,symbols_blur/symbol_8,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_10,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_11,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_12,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_13,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_14,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_15,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_16,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_17,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_18,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_19,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+570,570,0,symbols_blur/symbol_20,canvas mblur:90:30,Symbols [ALL]/Bonus Collect Center
+

@@ -9,3 +9,4 @@ output/
 
 # CSV debug log written by the script
 ExportLayersCSV-debug.log
+Exports Test/

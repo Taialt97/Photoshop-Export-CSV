@@ -1,0 +1,48 @@
+# paytable_visualizer.csv — target manifest generated from Downloads/Paytable + Downloads/Visualizer
+# Every asset of the two packs: Filename (output folder/name) and exact Width x Height
+# are pre-filled from the real files. COMPLETE THE Path COLUMN (last field) for each row:
+#   Group/Layer      walks groups     ::   drills into a Smart Object     [n]  = n-th child (top = 0)
+# Rows with an empty Path are skipped & reported, so a partially completed file runs safely.
+# Tip: open row-builder.html to click paths together against your PSD's layer tree.
+
+Width,Height,Padding,Filename,Mode,Path
+
+# ---- Paytable ----
+277,272,0,Paytable/page_0,fit,
+277,272,0,Paytable/page_1,fit,
+598,352,0,Paytable/page_2,fit,
+423,273,0,Paytable/page_3,fit,
+293,290,0,Paytable/page_4,fit,
+588,145,0,Paytable/page_5,fit,
+231,331,0,Paytable/page_5_port,fit,
+166,168,0,Paytable/symbol_0,fit,
+166,168,0,Paytable/symbol_1,fit,
+166,168,0,Paytable/symbol_2,fit,
+166,168,0,Paytable/symbol_3,fit,
+166,168,0,Paytable/symbol_4,fit,
+166,168,0,Paytable/symbol_5,fit,
+166,168,0,Paytable/symbol_6,fit,
+166,168,0,Paytable/symbol_7,fit,
+166,168,0,Paytable/symbol_16,fit,
+166,168,0,Paytable/symbol_17,fit,
+166,168,0,Paytable/symbol_18,fit,
+166,168,0,Paytable/symbol_19,fit,
+
+# ---- Visualizer ----
+# NOTE: the pack has one file named 8_10_11_12_13_14_15.png (one image reused for
+# symbols 8/10/11/12/13/14/15) — kept as a single row with that exact name.
+160,160,0,Visualizer/0,fit,
+160,160,0,Visualizer/1,fit,
+160,160,0,Visualizer/2,fit,
+160,160,0,Visualizer/3,fit,
+160,160,0,Visualizer/4,fit,
+160,160,0,Visualizer/5,fit,
+160,160,0,Visualizer/6,fit,
+160,160,0,Visualizer/7,fit,
+160,160,0,Visualizer/8_10_11_12_13_14_15,fit,
+160,160,0,Visualizer/9,fit,
+160,160,0,Visualizer/16,fit,
+160,160,0,Visualizer/17,fit,
+160,160,0,Visualizer/18,fit,
+160,160,0,Visualizer/19,fit,
+160,160,0,Visualizer/20,fit,

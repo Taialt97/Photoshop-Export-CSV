@@ -18,7 +18,7 @@ Width,Height,Padding,Filename,Mode,Path
 350,350,0,attachments/19,canvas,Jackpots Section [ALL]/JackpotsSection::Mini/Mini
 
 # ---- bg ---- 
-# 3840,3840,0,bg/bg,canvas,GameBackground/Background
+3840,3840,0,bg/bg,canvas,GameBackground/Background
 
 # ---- bigwin ----
 0,0,0,bigwin/counter_glow,fit,TotalWin/BackGlow
@@ -56,7 +56,7 @@ Width,Height,Padding,Filename,Mode,Path
 
 # ---- bonus_slot ----
 0,0,0,bonus_slot/dividers,fit,Bonus Game Layout/Slot::Frame with seperators/Separators
-0,0,0,bonus_slot/frame,fit,Bonus Game Layout/Slot::Separators or Compleate Frame/Bonus Frame
+0,0,0,bonus_slot/frame,fit,Bonus Game Layout/Slot::Separators or Compleate Frame/Compleate frame without seperators/Bonus Frame
 1471,878,0,bonus_slot/slot_bonus_bg,fit,Bonus Game Layout/Slot::SlotBonusBackground
 0,0,0,bonus_slot/static_middle_glow,fit,Bonus Game Layout/Slot::StaticMiddleGlow
 0,0,0,bonus_slot/static_section_glow,fit,Bonus Game Layout/Slot::StaticSectionGlow
@@ -113,26 +113,67 @@ Width,Height,Padding,Filename,Mode,Path
 
 # ---- symbols ----
 1080,1080,0,symbols/symbol_0,canvas,Symbols [ALL]/LowSymbols/[3]
+1080,1080,0,symbols_blur/symbol_0,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[3]
+
 1080,1080,0,symbols/symbol_1,canvas,Symbols [ALL]/LowSymbols/[2]
-1080,1080,0,symbols/symbol_2,canvas,Symbols [ALL]/[LowSymbols/1]
+1080,1080,0,symbols_blur/symbol_1,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[2]
+
+1080,1080,0,symbols/symbol_2,canvas,Symbols [ALL]/LowSymbols/[1]
+1080,1080,0,symbols_blur/symbol_2,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[1]
+
 1080,1080,0,symbols/symbol_3,canvas,Symbols [ALL]/LowSymbols/[0]
+1080,1080,0,symbols_blur/symbol_3,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[0]
+
 1080,1080,0,symbols/symbol_4,canvas,Symbols [ALL]/MediumSymbols/[3]
+1080,1080,0,symbols_blur/symbol_4,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[3]
+
 1080,1080,0,symbols/symbol_5,canvas,Symbols [ALL]/MediumSymbols/[2]
+1080,1080,0,symbols_blur/symbol_5,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[2]
+
 1080,1080,0,symbols/symbol_6,canvas,Symbols [ALL]/MediumSymbols/[1]
+1080,1080,0,symbols_blur/symbol_6,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[1]
+
 1080,1080,0,symbols/symbol_7,canvas,Symbols [ALL]/MediumSymbols/[0]
-500,395,0,symbols/symbol_8,fit,Symbols [ALL]/Bonus Symbol
+1080,1080,0,symbols_blur/symbol_7,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[0]
+
 1080,1080,0,symbols/symbol_9,canvas,Symbols [ALL]/Wild
-500,395,0,symbols/symbol_10,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_11,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_12,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_13,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_14,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_15,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_16,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_17,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_18,fit,Symbols [ALL]/Bonus Symbol
-500,395,0,symbols/symbol_19,fit,Symbols [ALL]/Bonus Symbol
-570,570,0,symbols/symbol_20,fit,Symbols [ALL]/Bonus Collect Center
+1080,1080,0,symbols_blur/symbol_9,canvas mblur:90:30,Symbols [ALL]/Wild
+
+500,395,0,symbols/symbol_8,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_8,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_10,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_10,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_11,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_11,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_12,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_12,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_13,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_13,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_14,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_14,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_15,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_15,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_16,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_16,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_17,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_17,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_18,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_18,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+500,395,0,symbols/symbol_19,canvas,Symbols [ALL]/Bonus Symbol
+500,395,0,symbols_blur/symbol_19,canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+570,570,0,symbols/symbol_20,canvas,Symbols [ALL]/Bonus Collect Center
+570,570,0,symbols_blur/symbol_20,canvas mblur:90:30,Symbols [ALL]/Bonus Collect Center
 
 # ---- top_bar ----
 0,0,0,top_bar/base,fit,Bonus Game Layout/BonusProgressBar::Background
@@ -141,6 +182,48 @@ Width,Height,Padding,Filename,Mode,Path
 0,0,0,top_bar/one,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/1
 0,0,0,top_bar/two,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/2
 0,0,0,top_bar/three,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/3
+
+# ---- Paytable ----
+277,272,0,Paytable/page_0,fit,Symbols [ALL]/Bonus Symbol
+277,272,0,Paytable/page_1,fit,Symbols [ALL]/Bonus Collect Center
+598,352,0,Paytable/page_2,fit,Symbols [ALL]/Extras/Paytable Bonus Game
+423,273,0,Paytable/page_3,fit,Symbols [ALL]/Extras/Paytables Coin Explotion
+293,290,0,Paytable/page_4,fit,Symbols [ALL]/Wild
+588,145,0,Paytable/page_5,fit,Symbols [ALL]/Paytables Lines/[1]
+231,331,0,Paytable/page_5_port,fit,Symbols [ALL]/Paytables Lines/[0]
+166,168,0,Paytable/symbol_0,fit,Symbols [ALL]/LowSymbols/[3]
+166,168,0,Paytable/symbol_1,fit,Symbols [ALL]/LowSymbols/[2]
+166,168,0,Paytable/symbol_2,fit,Symbols [ALL]/LowSymbols/[1]
+166,168,0,Paytable/symbol_3,fit,Symbols [ALL]/LowSymbols/[0]
+166,168,0,Paytable/symbol_4,fit,Symbols [ALL]/MediumSymbols/[3]
+166,168,0,Paytable/symbol_5,fit,Symbols [ALL]/MediumSymbols/[2]
+166,168,0,Paytable/symbol_6,fit,Symbols [ALL]/MediumSymbols/[1]
+166,168,0,Paytable/symbol_7,fit,Symbols [ALL]/MediumSymbols/[0]
+166,168,0,Paytable/symbol_16,fit,Symbols [ALL]/Jackpots/mini
+166,168,0,Paytable/symbol_17,fit,Symbols [ALL]/Jackpots/minor
+166,168,0,Paytable/symbol_18,fit,Symbols [ALL]/Jackpots/major
+166,168,0,Paytable/symbol_19,fit,Symbols [ALL]/Jackpots/grand
+
+# ---- Visualizer ----
+160,160,0,Visualizer/0,fit,Symbols [ALL]/LowSymbols/[3]
+160,160,0,Visualizer/1,fit,Symbols [ALL]/LowSymbols/[2]
+160,160,0,Visualizer/2,fit,Symbols [ALL]/LowSymbols/[1]
+160,160,0,Visualizer/3,fit,Symbols [ALL]/LowSymbols/[0]
+160,160,0,Visualizer/4,fit,Symbols [ALL]/MediumSymbols/[3]
+160,160,0,Visualizer/5,fit,Symbols [ALL]/MediumSymbols/[2]
+160,160,0,Visualizer/6,fit,Symbols [ALL]/MediumSymbols/[1]
+160,160,0,Visualizer/7,fit,Symbols [ALL]/MediumSymbols/[0]
+160,160,0,Visualizer/8_10_11_12_13_14_15,fit,Symbols [ALL]/Bonus Symbol
+160,160,0,Visualizer/9,fit,Symbols [ALL]/Wild
+160,160,0,Visualizer/16,fit,Symbols [ALL]/Jackpots/mini
+160,160,0,Visualizer/17,fit,Symbols [ALL]/Jackpots/minor
+160,160,0,Visualizer/18,fit,Symbols [ALL]/Jackpots/major
+160,160,0,Visualizer/19,fit,Symbols [ALL]/Jackpots/grand
+160,160,0,Visualizer/20,fit,Symbols [ALL]/Bonus Collect Center
+
+
+Symbols [ALL]/MediumSymbols/[3]
+
 
 # ================================================================
 # NOT in this manifest — rendered animation sequences (not PSD exports):
