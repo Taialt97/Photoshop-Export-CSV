@@ -431,7 +431,7 @@ var csvManifestData = [];
 // Parsed scope blocks: [{ scopeSpec: string|null, folderName: string|null, rows: [...] }].
 var csvBlocks = [];
 // Set by the Manifest panel checkbox while the dialog is open.
-var csvManifestDebugEnabled = false;
+var csvManifestDebugEnabled = true;
 
 // =====================================================================
 // UI Visibility Toggles — flip these to show/hide controls in the dialog
@@ -996,12 +996,31 @@ function saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label)
     }
 }
 
-// Export one resolved ArtLayer for one or more destination rows: isolate the layer (force it AND
-// every ancestor group visible, regardless of stored visibility), trim to the rendered composite,
-// size per the render, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
+// Size + save every render group from the CURRENT isolated/trimmed document (one shared
+// isolation pass -- see isolationKey). Each group shares one renderKey (same size/mode);
+// between groups the document steps back to the post-trim history state so every group
+// sizes from the same source pixels. With a single group this is exactly the old
+// size-then-save flow (the history capture is unused), which is the no-behavior-change
+// guarantee for old manifests. saveImage never adds history states, so the step-back only
+// undoes applyCsvSizing.
+function saveIsolationSizes(groups, scopeName, ext, retVal, failures, label) {
+    CSV_ISOLATIONS++; // one isolate+trim pass shared by every group below
+    var postTrim = (groups.length > 1) ? app.activeDocument.activeHistoryState : null;
+    for (var g = 0; g < groups.length; g++) {
+        if (g > 0) { app.activeDocument.activeHistoryState = postTrim; }
+        applyCsvSizing(groups[g][0]); // rows within a group share Width/Height/Padding/Mode
+        saveRenderToDestinations(groups[g], scopeName, ext, retVal, failures, label);
+    }
+}
+
+// Export one resolved ArtLayer for one or more render groups: isolate the layer (force it AND
+// every ancestor group visible, regardless of stored visibility), trim to the rendered
+// composite ONCE, then size + save each group in `groups` (saveIsolationSizes; rows within a
+// group share one render -- see renderKey/Step 6, groups share the isolation -- isolationKey).
 // Wrapped in store/restore history so the crop/resize are undone; visibility is reset by the
 // leading and trailing hideAllLayersDeep (restoreHistory does NOT undo visibility).
-function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, ext) {
+function exportSingleLayer(layer, groups, scopeName, retVal, failures, warnings, ext) {
+    var rows = groups[0]; // effects/label come from the first group (all share Path+effects)
     var label = rows[0].path;
     storeHistory();
     try {
@@ -1038,9 +1057,7 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
             return;
         }
 
-        applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
-
-        saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label);
+        saveIsolationSizes(groups, scopeName, ext, retVal, failures, label);
     } catch (e) {
         failures.push("\"" + label + "\": " + e.message);
         retVal.error = true;
@@ -1050,14 +1067,16 @@ function exportSingleLayer(layer, rows, scopeName, retVal, failures, warnings, e
     }
 }
 
-// Export one resolved LayerSet as a single flattened image for one or more destination rows:
+// Export one resolved LayerSet as a single flattened image for one or more render groups:
 // isolate the group (hide all, re-show the whole group + ancestors), trim to the rendered
-// composite, size, then save to every row in `rows` (all share one render -- see renderKey/Step 6).
+// composite ONCE, then size + save each group in `groups` (saveIsolationSizes; rows within a
+// group share one render -- renderKey/Step 6, groups share the isolation -- isolationKey).
 // Flattening is done by saveImage's composite (not merge(), which bakes a black Pass-Through
 // backdrop), so transparency is preserved exactly like a layer row. restoreHistory undoes the
 // crop; the leading/trailing hide reset visibility. The caller re-resolves `ls` fresh per row
 // because the crop+undo leaves refs stale.
-function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, ext) {
+function exportFlattenedFolder(ls, groups, scopeName, retVal, failures, warnings, ext) {
+    var rows = groups[0]; // effects/label come from the first group (all share Path+effects)
     var label = rows[0].path;
     var wasHidden = false;
     try { wasHidden = !ls.visible; } catch (eVis) { }
@@ -1092,10 +1111,8 @@ function exportFlattenedFolder(ls, rows, scopeName, retVal, failures, warnings, 
             return;
         }
 
-        applyCsvSizing(rows[0]); // all rows share Width/Height/Padding/Mode
-
         var savedBefore = retVal.count;
-        saveRenderToDestinations(rows, scopeName, ext, retVal, failures, label);
+        saveIsolationSizes(groups, scopeName, ext, retVal, failures, label);
         if (wasHidden && retVal.count > savedBefore) {
             warnings.push("\"" + label + "\": flattened a HIDDEN group (forced visible to export)");
         }
@@ -1128,6 +1145,18 @@ function drillPrefixKey(segs) { return segs.slice(0, segs.length - 1).join("::")
 // get different keys and each render independently.
 function renderKey(row) {
     var k = row.path + "|" + row.width + "|" + row.height + "|" + row.padding + "|" + row.mode;
+    if (row.effectTokens && row.effectTokens.length > 0) { k += "|" + row.effectTokens.join(" "); }
+    return k;
+}
+
+// The isolation key groups rows that can share ONE isolate+bake+effects+trim pass: same
+// source Path and same pre-export effects. Sizing (Width/Height/Padding/Mode) is NOT part
+// of the key -- it is applied per render group INSIDE the shared isolation, stepping the
+// document back to the post-trim history state between groups (saveIsolationSizes). An
+// isolation run is therefore a superset of renderKey runs: consecutive rows with the same
+// Path+effects but different sizes isolate once and only re-size per group.
+function isolationKey(row) {
+    var k = row.path;
     if (row.effectTokens && row.effectTokens.length > 0) { k += "|" + row.effectTokens.join(" "); }
     return k;
 }
@@ -1319,8 +1348,9 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
     var savedDialogMode = app.displayDialogs;
     app.displayDialogs = DialogModes.NO;
     var ext = prefs.fileExtension;
-    CSV_SO_OPENS = 0; // count Smart Object opens for the summary (Step 5)
-    CSV_RENDERS = 0;  // count distinct renders for the summary (Step 6 cache visibility)
+    CSV_SO_OPENS = 0;   // count Smart Object opens for the summary (Step 5)
+    CSV_RENDERS = 0;    // count distinct renders for the summary (Step 6 cache visibility)
+    CSV_ISOLATIONS = 0; // count shared isolation passes for the summary
 
     var retVal = { count: 0, error: false };
     var failures = [];   // hard errors (save/folder failures)
@@ -1522,16 +1552,28 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
         for (var je = 0; je < jobs.length && !userCancelled; je++) {
             var job = jobs[je];
             for (var re = 0; re < job.rows.length; ) {
-                // Gather the run of consecutive rows that share one render (same Path + Width +
-                // Height + Padding + Mode). They differ only in output Filename, so the asset is
-                // rendered once and saved to every destination in the run (Step 6). A size change
-                // breaks the run, so those rows render independently.
+                // Gather the run of consecutive rows that share one ISOLATION (same Path +
+                // effects -- isolationKey). Within the run, rows are grouped by full renderKey
+                // (size/mode): each group renders once and saves to all its destinations
+                // (Step 6), and all groups share the single isolate+bake+trim pass
+                // (saveIsolationSizes). Rows with the same size scattered inside the run are
+                // merged into one group -- safe, because the isolation is identical.
                 var row0 = job.rows[re];
-                var runKey = renderKey(row0);
+                var runKey = isolationKey(row0);
                 var runRows = [row0];
                 var rr = re + 1;
-                while (rr < job.rows.length && renderKey(job.rows[rr]) === runKey) {
+                while (rr < job.rows.length && isolationKey(job.rows[rr]) === runKey) {
                     runRows.push(job.rows[rr]); rr++;
+                }
+                var sizeGroups = [];
+                var groupByKey = {};
+                for (var sg = 0; sg < runRows.length; sg++) {
+                    var sgKey = "k|" + renderKey(runRows[sg]);
+                    if (!groupByKey[sgKey]) {
+                        groupByKey[sgKey] = [];
+                        sizeGroups.push(groupByKey[sgKey]);
+                    }
+                    groupByKey[sgKey].push(runRows[sg]);
                 }
                 if (row0.effectError) {
                     // Bad effect token: already reported loudly by validation; never export
@@ -1569,9 +1611,9 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                             if (!dtarget) {
                                 warnings.push("\"" + row0.path + "\": \"" + finalSeg + "\" not found inside Smart Object -- skipped");
                             } else if (dtarget.typename === "LayerSet") {
-                                exportFlattenedFolder(dtarget, runRows, job.folderName, retVal, failures, warnings, ext);
+                                exportFlattenedFolder(dtarget, sizeGroups, job.folderName, retVal, failures, warnings, ext);
                             } else {
-                                exportSingleLayer(dtarget, runRows, job.folderName, retVal, failures, warnings, ext);
+                                exportSingleLayer(dtarget, sizeGroups, job.folderName, retVal, failures, warnings, ext);
                             }
                         } catch (eDrill) {
                             failures.push("\"" + row0.path + "\": " + eDrill.message); retVal.error = true;
@@ -1583,9 +1625,9 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                     var target = root ? resolveCsvPath(row0.path, root) : null;
                     if (target) {
                         if (target.typename === "LayerSet") {
-                            exportFlattenedFolder(target, runRows, job.folderName, retVal, failures, warnings, ext);
+                            exportFlattenedFolder(target, sizeGroups, job.folderName, retVal, failures, warnings, ext);
                         } else {
-                            exportSingleLayer(target, runRows, job.folderName, retVal, failures, warnings, ext);
+                            exportSingleLayer(target, sizeGroups, job.folderName, retVal, failures, warnings, ext);
                         }
                     }
                 }
@@ -1608,9 +1650,9 @@ function runCsvManifest(progressBarWindow, profiler, dupDurationMs) {
                     if (userCancelled) { return; }
                     var srow = sweepRowFor(job.def, filenameField, label);
                     if (ref.typename === "LayerSet") {
-                        exportFlattenedFolder(ref, [srow], "", retVal, failures, warnings, ext);
+                        exportFlattenedFolder(ref, [[srow]], "", retVal, failures, warnings, ext);
                     } else {
-                        exportSingleLayer(ref, [srow], "", retVal, failures, warnings, ext);
+                        exportSingleLayer(ref, [[srow]], "", retVal, failures, warnings, ext);
                     }
                     done++;
                     if (progressBarWindow) {
@@ -1667,6 +1709,9 @@ function showCsvSummary(headline, count, failures, warnings, badScopes, unresolv
     if (soOpens && soOpens > 0) { msg += "\nSmart Object opens: " + soOpens; }
     if (CSV_RENDERS > 0 && CSV_RENDERS < count) {
         msg += "\nRenders: " + CSV_RENDERS + " (saved " + count + " files -- " + (count - CSV_RENDERS) + " reused a cached render)";
+    }
+    if (CSV_ISOLATIONS > 0 && CSV_ISOLATIONS < CSV_RENDERS) {
+        msg += "\nIsolations: " + CSV_ISOLATIONS + " (" + (CSV_RENDERS - CSV_ISOLATIONS) + " render(s) shared an isolation -- same Path, different size)";
     }
     var isError = (failures.length > 0) || (badScopes.length > 0) || (drillBadPrefix && drillBadPrefix.length > 0) || (badEffects && badEffects.length > 0);
     alert(msg, "CSV Export Summary", isError);
@@ -1746,6 +1791,11 @@ var CSV_SO_OPENS = 0;
 // to its destinations). With Step 6 multi-destination, renders < saved files -- the difference
 // is what caching saved. Reset at the top of runCsvManifest; bumped in saveRenderToDestinations.
 var CSV_RENDERS = 0;
+// Count of isolation passes (hide-all + show target + bake + effects + trim) performed during
+// a run. With shared isolation, consecutive rows with the same Path+effects but different
+// sizes do this once (isolations < renders); the difference is what the sharing saved.
+// Reset at the top of runCsvManifest; bumped in the export funcs after a successful trim.
+var CSV_ISOLATIONS = 0;
 // Open a Smart Object's contents as a new (active) document -- the DOM has no method for this,
 // so it is the "Edit Contents" command via ActionManager. The SO layer must be the active
 // layer first. Returns the newly opened contents document (now app.activeDocument).
