@@ -1,0 +1,211 @@
+# Version,1.2
+
+Width,Height,Padding,Filename,Mode,Path
+
+# ---- Jackpots: attachments + jackpotcontainers (one SO, opened ONCE) ----
+
+# NOTE: according to other psd to atlas the assets are dinamic (fit, trimmd) 
+
+350,350,0,attachments/19,canvas,Jackpots Section [ALL]/JackpotsSection::Grand/Grand
+0,0,0,jackpotcontainers/grand_bar,fit,Jackpots Section [ALL]/JackpotsSection::Grand
+350,350,0,attachments/18,canvas,Jackpots Section [ALL]/JackpotsSection::Major/Major
+0,0,0,jackpotcontainers/major_bar,fit,Jackpots Section [ALL]/JackpotsSection::Major
+350,350,0,attachments/17,canvas,Jackpots Section [ALL]/JackpotsSection::Minor/Minor
+0,0,0,jackpotcontainers/minor_bar,fit,Jackpots Section [ALL]/JackpotsSection::Minor
+350,350,0,attachments/16,canvas,Jackpots Section [ALL]/JackpotsSection::Mini/Mini
+0,0,0,jackpotcontainers/mini_bar,fit,Jackpots Section [ALL]/JackpotsSection::Mini
+0,0,0,attachments/collect_symbol_attachment,fit,Symbols [ALL]/Values/Glow
+
+# ---- bg ----
+3840,3840,0,bg/bg,canvas,GameBackground/Background
+
+# ---- bigwin ---- (two files from one glow render)
+0,0,0,bigwin/{counter_glow,total_win_glow},fit,TotalWin/BackGlow
+0,0,0,bigwin/normal_win_counter_glow,fit,Big Win/Back Glow
+
+# ---- bonus_mini_game (+_blur copies) ---- one SO, 3 renders, 24 files
+
+500,500,0,bonus_mini_game{,_blur}/symbol_{10..15},canvas,Symbols [ALL]/Bonus Symbol
+500,500,0,bonus_mini_game{,_blur}/symbol_16,canvas,Symbols [ALL]/Jackpots/mini
+500,500,0,bonus_mini_game{,_blur}/symbol_17,canvas,Symbols [ALL]/Jackpots/minor
+500,500,0,bonus_mini_game{,_blur}/symbol_18,canvas,Symbols [ALL]/Jackpots/major
+500,500,0,bonus_mini_game{,_blur}/symbol_19,canvas,Symbols [ALL]/Jackpots/grand
+500,500,0,bonus_mini_game{,_blur}/symbol_20,canvas,Symbols [ALL]/Bonus Collect Center/Bonus Collect
+485,294,0,bonus_mini_game{,_blur}/symbol_21,canvas,BSP/Bonus Background::Sections/symbol_21
+
+# ---- flare ---- 
+
+128,129,0,flare/flare,fit,MainSplash/ParticlesPreview/ParticlesPreview::particle
+
+# ---- bonus_slot ---- (one SO, opened once)
+0,0,0,bonus_slot/dividers,fit,Bonus Game Layout/Slot::Frame with seperators/Separators
+0,0,0,bonus_slot/frame,fit,Bonus Game Layout/Slot::Separators or Compleate Frame/Compleate frame without seperators/Bonus Frame
+1471,878,0,bonus_slot/slot_bonus_bg,fit,Bonus Game Layout/Slot::SlotBonusBackground
+0,0,0,bonus_slot/static_middle_glow,fit,Bonus Game Layout/Slot::StaticMiddleGlow
+0,0,0,bonus_slot/static_section_glow,fit,Bonus Game Layout/Slot::StaticSectionGlow
+
+# ---- BSPTransitionInEffect ----
+1524,1526,0,BSPTransitionInEffect/transition_in_circle,fit,BSP/Transition Glow
+
+# ---- flare ---- what is it used for
+# 127,128,0,flare/flare,fit,
+
+# ---- gametitle ----
+0,0,0,gametitle/title,fit,GameTitle
+
+# ---- line_display ----
+1468,120,0,line_display/line_display,fit,NormalWin/Coin Animation & Win Lines/WinLines/1
+1471,672,0,line_display/line_four,fit,NormalWin/Coin Animation & Win Lines/WinLines/2
+1471,672,0,line_display/line_five,fit,NormalWin/Coin Animation & Win Lines/WinLines/3
+
+# ---- mainsplash ----
+0,0,0,mainsplash/back_glow,fit,MainSplash/BackGlow
+0,0,0,mainsplash/main_splash_screen,fit,MainSplash/MainSplashScreen
+0,0,0,mainsplash/main_splash_title,fit,MainSplash/Top Section/Hold & Hit 3x3 Container
+0,0,0,mainsplash/start_button,fit,MainSplash/Start Button/Button
+
+
+# ---- mask ----
+144,144,0,mask/Mask,fit,Extra Exports/Mask
+
+# ---- particles ---- 
+100,100,0,particles/blue_particle,fit,ParticlesPreview/ParticlesPreview::particle
+100,88,0,particles/spark,fit,Extra Exports/Particles/spark
+
+# ---- reel_glow ----
+0,0,0,reel_glow/reel_activated_glow,fit,Slot Container/Reel Glow/Bottom Glow Indicators/On
+0,0,0,reel_glow/reel_glow,fit,Slot Container/Reel Glow/Reel Glows/Glow
+
+# ---- sentences/en_us ---- (different source each -- no sharing possible)
+0,0,0,sentences/en_us/win,fit,Big Win/Sentances/Win
+0,0,0,sentences/en_us/epic_win_sentence,fit,Big Win/Sentances/Epic
+0,0,0,sentences/en_us/super_win_sentence,fit,Big Win/Sentances/Super
+0,0,0,sentences/en_us/mega_win_sentence,fit,Big Win/Sentances/Mega
+0,0,0,sentences/en_us/big_win_sentence,fit,Big Win/Sentances/Big
+
+# ---- slot ----
+1470,891,0,slot/anticipation_bg_glow,fit,Slot Container/Anticipation Glow
+1471,942,0,slot/bg,fit,Slot Container/Slot Reels and Background
+0,0,0,slot/frame,fit,Slot Container/Main Frame
+
+# ================================================================
+# SYMBOLS — one block per asset: game size + Paytable + Visualizer
+# share ONE isolation of the layer; the blur is its own render.
+# ================================================================
+
+# -- low symbols 0..3 --
+1920,1920,0,symbols/symbol_0,canvas,Symbols [ALL]/LowSymbols/[3]
+166,168,0,Paytable/symbol_0,fit,Symbols [ALL]/LowSymbols/[3]
+160,160,0,Visualizer/0,fit,Symbols [ALL]/LowSymbols/[3]
+1920,1920,0,symbols_blur/symbol_0,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[3]
+
+1920,1920,0,symbols/symbol_1,canvas,Symbols [ALL]/LowSymbols/[2]
+166,168,0,Paytable/symbol_1,fit,Symbols [ALL]/LowSymbols/[2]
+160,160,0,Visualizer/1,fit,Symbols [ALL]/LowSymbols/[2]
+1920,1920,0,symbols_blur/symbol_1,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[2]
+
+1920,1920,0,symbols/symbol_2,canvas,Symbols [ALL]/LowSymbols/[1]
+166,168,0,Paytable/symbol_2,fit,Symbols [ALL]/LowSymbols/[1]
+160,160,0,Visualizer/2,fit,Symbols [ALL]/LowSymbols/[1]
+1920,1920,0,symbols_blur/symbol_2,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[1]
+
+1920,1920,0,symbols/symbol_3,canvas,Symbols [ALL]/LowSymbols/[0]
+166,168,0,Paytable/symbol_3,fit,Symbols [ALL]/LowSymbols/[0]
+160,160,0,Visualizer/3,fit,Symbols [ALL]/LowSymbols/[0]
+1920,1920,0,symbols_blur/symbol_3,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[0]
+
+# -- medium symbols 4..7 --
+1920,1920,0,symbols/symbol_4,canvas,Symbols [ALL]/MediumSymbols/[3]
+166,168,0,Paytable/symbol_4,fit,Symbols [ALL]/MediumSymbols/[3]
+160,160,0,Visualizer/4,fit,Symbols [ALL]/MediumSymbols/[3]
+1920,1920,0,symbols_blur/symbol_4,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[3]
+
+1920,1920,0,symbols/symbol_5,canvas,Symbols [ALL]/MediumSymbols/[2]
+166,168,0,Paytable/symbol_5,fit,Symbols [ALL]/MediumSymbols/[2]
+160,160,0,Visualizer/5,fit,Symbols [ALL]/MediumSymbols/[2]
+1920,1920,0,symbols_blur/symbol_5,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[2]
+
+1920,1920,0,symbols/symbol_6,canvas,Symbols [ALL]/MediumSymbols/[1]
+166,168,0,Paytable/symbol_6,fit,Symbols [ALL]/MediumSymbols/[1]
+160,160,0,Visualizer/6,fit,Symbols [ALL]/MediumSymbols/[1]
+1920,1920,0,symbols_blur/symbol_6,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[1]
+
+1920,1920,0,symbols/symbol_7,canvas,Symbols [ALL]/MediumSymbols/[0]
+166,168,0,Paytable/symbol_7,fit,Symbols [ALL]/MediumSymbols/[0]
+160,160,0,Visualizer/7,fit,Symbols [ALL]/MediumSymbols/[0]
+1920,1920,0,symbols_blur/symbol_7,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[0]
+
+# -- wild (symbol_9 + Paytable page_4) --
+1920,1920,0,symbols/symbol_9,canvas,Symbols [ALL]/Wild
+293,290,0,Paytable/page_4,fit,Symbols [ALL]/Wild
+160,160,0,Visualizer/9,fit,Symbols [ALL]/Wild
+1920,1920,0,symbols_blur/symbol_9,canvas mblur:90:30,Symbols [ALL]/Wild
+
+# -- bonus symbol (game 8 + 10..19 are the SAME image; + Paytable page_0 + Visualizer) --
+1920,1920,0,symbols/symbol_{8,10..15},canvas,Symbols [ALL]/Bonus Symbol
+277,272,0,Paytable/page_0,fit,Symbols [ALL]/Bonus Symbol
+160,160,0,Visualizer/8_10_11_12_13_14_15,fit,Symbols [ALL]/Bonus Symbol
+1920,1920,0,symbols_blur/symbol_{8,10..15},canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
+
+# -- jackpots symbols
+
+1920,1920,0,symbols/symbol_16,canvas,Symbols [ALL]/Jackpots/mini
+1920,1920,0,symbols_blur/symbol_16,canvas mblur:90:30,Symbols [ALL]/Jackpots/mini
+
+1920,1920,0,symbols/symbol_17,canvas,Symbols [ALL]/Jackpots/minor
+1920,1920,0,symbols_blur/symbol_17,canvas mblur:90:30,Symbols [ALL]/Jackpots/minor
+
+1920,1920,0,symbols/symbol_18,canvas,Symbols [ALL]/Jackpots/major
+1920,1920,0,symbols_blur/symbol_18,canvas mblur:90:30,Symbols [ALL]/Jackpots/major
+
+1920,1920,0,symbols/symbol_19,canvas,Symbols [ALL]/Jackpots/grand
+1920,1920,0,symbols_blur/symbol_19,canvas mblur:90:30,Symbols [ALL]/Jackpots/grand
+
+# -- bonus collect center (symbol_20 + Paytable page_1) --
+1920,1920,0,symbols/symbol_20,canvas,Symbols [ALL]/Bonus Collect Center
+277,272,0,Paytable/page_1,fit,Symbols [ALL]/Bonus Collect Center
+160,160,0,Visualizer/20,fit,Symbols [ALL]/Bonus Collect Center
+1920,1920,0,symbols_blur/symbol_20,canvas mblur:90:30,Symbols [ALL]/Bonus Collect Center
+
+# -- jackpot symbols (Paytable + Visualizer only) --
+166,168,0,Paytable/symbol_16,fit,Symbols [ALL]/Jackpots/mini
+160,160,0,Visualizer/16,fit,Symbols [ALL]/Jackpots/mini
+166,168,0,Paytable/symbol_17,fit,Symbols [ALL]/Jackpots/minor
+160,160,0,Visualizer/17,fit,Symbols [ALL]/Jackpots/minor
+166,168,0,Paytable/symbol_18,fit,Symbols [ALL]/Jackpots/major
+160,160,0,Visualizer/18,fit,Symbols [ALL]/Jackpots/major
+166,168,0,Paytable/symbol_19,fit,Symbols [ALL]/Jackpots/grand
+160,160,0,Visualizer/19,fit,Symbols [ALL]/Jackpots/grand
+
+# -- paytable extras --
+598,352,0,Paytable/page_2,fit,Symbols [ALL]/Extras/Paytable Bonus Game
+423,273,0,Paytable/page_3,fit,Symbols [ALL]/Extras/Paytables Coin Explotion
+588,145,0,Paytable/page_5,fit,Symbols [ALL]/Extras/Paytables Lines/[1]
+231,331,0,Paytable/page_5_port,fit,Symbols [ALL]/Extras/Paytables Lines/[0]
+
+# ---- top_bar ---- (one SO, opened once)
+0,0,0,top_bar/base,fit,Bonus Game Layout/BonusProgressBar::Background
+# 0,0,0,top_bar/empty_bars,fit,
+0,0,0,top_bar/frame,fit,Bonus Game Layout/BonusProgressBar::frame
+0,0,0,top_bar/one,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/1
+0,0,0,top_bar/two,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/2
+0,0,0,top_bar/three,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/3
+
+# ---- top_character_static ----
+
+0,0,0,top_character_static/top_character_states/top_character_first_interaction_state/CoinPile_1,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_01
+0,0,0,top_character_static/top_character_states/top_character_second_state/CoinPile_2,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_02
+0,0,0,top_character_static/top_character_states/top_character_third_state/CoinPile_3,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_03
+0,0,0,top_character_static/top_character_states/top_character_final_form_state/CoinPile_4,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_04
+
+
+
+
+
+
+
+
+
+# ================================================================
+# NOT in this manifest — rendered animation sequences (not PSD exports):
+#   animations/** (18 folders, 344 frames) — see game_export.csv for the list

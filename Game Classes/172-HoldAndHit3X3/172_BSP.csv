@@ -1,0 +1,13 @@
+Width,Height,Padding,Filename,Mode,Path
+
+0,0,0,Major,fit,BSP [ALL]/Major
+0,0,0,Bonus-Symbol,fit,BSP [ALL]/Bonus Symbol
+0,0,0,Special-Effect-For-Bonus,fit,BSP [ALL]/Special Effect For Bonus
+0,0,0,Bonus-Background-BSP,fit,BSP [ALL]/Bonus Background
+400,400,0,Value_7,canvas,BSP [ALL]/Values/Value_7
+400,400,0,Value_10,canvas,BSP [ALL]/Values/Value_10
+400,400,0,Value_15,canvas,BSP [ALL]/Values/Value_15
+400,400,0,Value_25,canvas,BSP [ALL]/Values/Value_25
+400,400,0,Value_192,canvas,BSP [ALL]/Values/Value_192
+
+
