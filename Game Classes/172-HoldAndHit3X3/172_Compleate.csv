@@ -1,4 +1,33 @@
-# Version,1.2
+# ================================================================
+# Export manifest — v1.2
+# Columns: Width,Height,Padding,Filename,Mode,Path
+# ================================================================
+# Width/Height  Output canvas size in px. Empty or 0 = natural size (no resize).
+# Padding       Ammount of px padding. fit mode only; canvas ignores it.
+# Filename      Output name, NO extension.
+#               "sub/name" writes into a subfolder.
+# Mode          fit = scale asset to fit, centered on W x H. Results in a predefined size or inherited size if W/H = 0. Padding is applied.
+#               canvas = keep asset at original px size, centered on W x H, overflow cropped
+# Path          Where the source lives in the PSD (see grammar below).
+# ----------------------------------------------------------------
+# Path grammar
+#   A/B/C       Walk down by name (case-sensitive, read top-down in the Layers panel)
+#   A/[0]       N-th direct child; [0] = topmost. Counts layers AND groups.
+#   A::B        Drill into Smart Object A, continue inside it
+#   A/B::C/D    group A > smart object B > group C > layer D
+#
+#   Ends on a LAYER  -> exports that layer
+#   Ends on a GROUP  -> flattens the whole group into one image
+#   Hidden layers/groups export anyway — listing a row IS the intent to export it.
+# ----------------------------------------------------------------
+Roadmap:
+    [] - Add export File Type column (png, jpg, etc)
+    [] - Add export Quality column (for jpg, webp, etc)
+    [] - Feature export selection. Select a single specipic folders to export, or a single asset to export.
+    [] - Feature Browse remembers last location
+    [] - Export assets including their clipping masks
+    [] - Feature assets verification. Check the exported assets against the manifest, and report missing or mismatched assets.
+# ================================================================
 
 Width,Height,Padding,Filename,Mode,Path
 
@@ -45,7 +74,7 @@ Width,Height,Padding,Filename,Mode,Path
 0,0,0,bonus_slot/static_section_glow,fit,Bonus Game Layout/Slot::StaticSectionGlow
 
 # ---- BSPTransitionInEffect ----
-1524,1526,0,BSPTransitionInEffect/transition_in_circle,fit,BSP/Transition Glow
+0,0,0,BSPTransitionInEffect/transition_in_circle,fit,BSP/Transition Glow
 
 # ---- flare ---- what is it used for
 # 127,128,0,flare/flare,fit,
@@ -95,56 +124,56 @@ Width,Height,Padding,Filename,Mode,Path
 
 # -- low symbols 0..3 --
 1920,1920,0,symbols/symbol_0,canvas,Symbols [ALL]/LowSymbols/[3]
-166,168,0,Paytable/symbol_0,fit,Symbols [ALL]/LowSymbols/[3]
-160,160,0,Visualizer/0,fit,Symbols [ALL]/LowSymbols/[3]
+166,168,10,Paytable/symbol_0,fit,Symbols [ALL]/LowSymbols/[3]
+160,160,4,Visualizer/0,fit,Symbols [ALL]/LowSymbols/[3]
 1920,1920,0,symbols_blur/symbol_0,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[3]
 
 1920,1920,0,symbols/symbol_1,canvas,Symbols [ALL]/LowSymbols/[2]
-166,168,0,Paytable/symbol_1,fit,Symbols [ALL]/LowSymbols/[2]
-160,160,0,Visualizer/1,fit,Symbols [ALL]/LowSymbols/[2]
+166,168,10,Paytable/symbol_1,fit,Symbols [ALL]/LowSymbols/[2]
+160,160,4,Visualizer/1,fit,Symbols [ALL]/LowSymbols/[2]
 1920,1920,0,symbols_blur/symbol_1,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[2]
 
 1920,1920,0,symbols/symbol_2,canvas,Symbols [ALL]/LowSymbols/[1]
-166,168,0,Paytable/symbol_2,fit,Symbols [ALL]/LowSymbols/[1]
-160,160,0,Visualizer/2,fit,Symbols [ALL]/LowSymbols/[1]
+166,168,10,Paytable/symbol_2,fit,Symbols [ALL]/LowSymbols/[1]
+160,160,4,Visualizer/2,fit,Symbols [ALL]/LowSymbols/[1]
 1920,1920,0,symbols_blur/symbol_2,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[1]
 
 1920,1920,0,symbols/symbol_3,canvas,Symbols [ALL]/LowSymbols/[0]
-166,168,0,Paytable/symbol_3,fit,Symbols [ALL]/LowSymbols/[0]
-160,160,0,Visualizer/3,fit,Symbols [ALL]/LowSymbols/[0]
+166,168,10,Paytable/symbol_3,fit,Symbols [ALL]/LowSymbols/[0]
+160,160,4,Visualizer/3,fit,Symbols [ALL]/LowSymbols/[0]
 1920,1920,0,symbols_blur/symbol_3,canvas mblur:90:30,Symbols [ALL]/LowSymbols/[0]
 
 # -- medium symbols 4..7 --
 1920,1920,0,symbols/symbol_4,canvas,Symbols [ALL]/MediumSymbols/[3]
-166,168,0,Paytable/symbol_4,fit,Symbols [ALL]/MediumSymbols/[3]
-160,160,0,Visualizer/4,fit,Symbols [ALL]/MediumSymbols/[3]
+166,168,10,Paytable/symbol_4,fit,Symbols [ALL]/MediumSymbols/[3]
+160,160,4,Visualizer/4,fit,Symbols [ALL]/MediumSymbols/[3]
 1920,1920,0,symbols_blur/symbol_4,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[3]
 
 1920,1920,0,symbols/symbol_5,canvas,Symbols [ALL]/MediumSymbols/[2]
-166,168,0,Paytable/symbol_5,fit,Symbols [ALL]/MediumSymbols/[2]
-160,160,0,Visualizer/5,fit,Symbols [ALL]/MediumSymbols/[2]
+166,168,10,Paytable/symbol_5,fit,Symbols [ALL]/MediumSymbols/[2]
+160,160,4,Visualizer/5,fit,Symbols [ALL]/MediumSymbols/[2]
 1920,1920,0,symbols_blur/symbol_5,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[2]
 
 1920,1920,0,symbols/symbol_6,canvas,Symbols [ALL]/MediumSymbols/[1]
-166,168,0,Paytable/symbol_6,fit,Symbols [ALL]/MediumSymbols/[1]
-160,160,0,Visualizer/6,fit,Symbols [ALL]/MediumSymbols/[1]
+166,168,10,Paytable/symbol_6,fit,Symbols [ALL]/MediumSymbols/[1]
+160,160,4,Visualizer/6,fit,Symbols [ALL]/MediumSymbols/[1]
 1920,1920,0,symbols_blur/symbol_6,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[1]
 
 1920,1920,0,symbols/symbol_7,canvas,Symbols [ALL]/MediumSymbols/[0]
-166,168,0,Paytable/symbol_7,fit,Symbols [ALL]/MediumSymbols/[0]
-160,160,0,Visualizer/7,fit,Symbols [ALL]/MediumSymbols/[0]
+166,168,10,Paytable/symbol_7,fit,Symbols [ALL]/MediumSymbols/[0]
+160,160,4,Visualizer/7,fit,Symbols [ALL]/MediumSymbols/[0]
 1920,1920,0,symbols_blur/symbol_7,canvas mblur:90:30,Symbols [ALL]/MediumSymbols/[0]
 
 # -- wild (symbol_9 + Paytable page_4) --
 1920,1920,0,symbols/symbol_9,canvas,Symbols [ALL]/Wild
-293,290,0,Paytable/page_4,fit,Symbols [ALL]/Wild
-160,160,0,Visualizer/9,fit,Symbols [ALL]/Wild
+293,290,10,Paytable/page_4,fit,Symbols [ALL]/Wild
+160,160,4,Visualizer/9,fit,Symbols [ALL]/Wild
 1920,1920,0,symbols_blur/symbol_9,canvas mblur:90:30,Symbols [ALL]/Wild
 
 # -- bonus symbol (game 8 + 10..19 are the SAME image; + Paytable page_0 + Visualizer) --
 1920,1920,0,symbols/symbol_{8,10..15},canvas,Symbols [ALL]/Bonus Symbol
-277,272,0,Paytable/page_0,fit,Symbols [ALL]/Bonus Symbol
-160,160,0,Visualizer/8_10_11_12_13_14_15,fit,Symbols [ALL]/Bonus Symbol
+277,272,10,Paytable/page_0,fit,Symbols [ALL]/Bonus Symbol
+160,160,4,Visualizer/8_10_11_12_13_14_15,fit,Symbols [ALL]/Bonus Symbol
 1920,1920,0,symbols_blur/symbol_{8,10..15},canvas mblur:90:30,Symbols [ALL]/Bonus Symbol
 
 # -- jackpots symbols
@@ -163,33 +192,33 @@ Width,Height,Padding,Filename,Mode,Path
 
 # -- bonus collect center (symbol_20 + Paytable page_1) --
 1920,1920,0,symbols/symbol_20,canvas,Symbols [ALL]/Bonus Collect Center
-277,272,0,Paytable/page_1,fit,Symbols [ALL]/Bonus Collect Center
-160,160,0,Visualizer/20,fit,Symbols [ALL]/Bonus Collect Center
+277,272,10,Paytable/page_1,fit,Symbols [ALL]/Bonus Collect Center
+160,160,4,Visualizer/20,fit,Symbols [ALL]/Bonus Collect Center
 1920,1920,0,symbols_blur/symbol_20,canvas mblur:90:30,Symbols [ALL]/Bonus Collect Center
 
 # -- jackpot symbols (Paytable + Visualizer only) --
-166,168,0,Paytable/symbol_16,fit,Symbols [ALL]/Jackpots/mini
-160,160,0,Visualizer/16,fit,Symbols [ALL]/Jackpots/mini
-166,168,0,Paytable/symbol_17,fit,Symbols [ALL]/Jackpots/minor
-160,160,0,Visualizer/17,fit,Symbols [ALL]/Jackpots/minor
-166,168,0,Paytable/symbol_18,fit,Symbols [ALL]/Jackpots/major
-160,160,0,Visualizer/18,fit,Symbols [ALL]/Jackpots/major
-166,168,0,Paytable/symbol_19,fit,Symbols [ALL]/Jackpots/grand
-160,160,0,Visualizer/19,fit,Symbols [ALL]/Jackpots/grand
+166,168,10,Paytable/symbol_16,fit,Symbols [ALL]/Jackpots/mini 
+160,160,4,Visualizer/16,fit,Symbols [ALL]/Jackpots/mini
+166,168,10,Paytable/symbol_17,fit,Symbols [ALL]/Jackpots/minor
+160,160,4,Visualizer/17,fit,Symbols [ALL]/Jackpots/minor
+166,168,10,Paytable/symbol_18,fit,Symbols [ALL]/Jackpots/major
+160,160,4,Visualizer/18,fit,Symbols [ALL]/Jackpots/major
+166,168,10,Paytable/symbol_19,fit,Symbols [ALL]/Jackpots/grand
+160,160,4,Visualizer/19,fit,Symbols [ALL]/Jackpots/grand
 
 # -- paytable extras --
-598,352,0,Paytable/page_2,fit,Symbols [ALL]/Extras/Paytable Bonus Game
+598,352,10,Paytable/page_2,fit,Symbols [ALL]/Extras/Paytable Bonus Game
 423,273,0,Paytable/page_3,fit,Symbols [ALL]/Extras/Paytables Coin Explotion
-588,145,0,Paytable/page_5,fit,Symbols [ALL]/Extras/Paytables Lines/[1]
-231,331,0,Paytable/page_5_port,fit,Symbols [ALL]/Extras/Paytables Lines/[0]
+0,0,0,Paytable/page_5,fit,Symbols [ALL]/Extras/Paytables Lines/[1]
+0,0,0,Paytable/page_5_port,fit,Symbols [ALL]/Extras/Paytables Lines/[0]
 
 # ---- top_bar ---- (one SO, opened once)
 0,0,0,top_bar/base,fit,Bonus Game Layout/BonusProgressBar::Background
 # 0,0,0,top_bar/empty_bars,fit,
 0,0,0,top_bar/frame,fit,Bonus Game Layout/BonusProgressBar::frame
-0,0,0,top_bar/one,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/1
-0,0,0,top_bar/two,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/2
-0,0,0,top_bar/three,fit,Bonus Game Layout/BonusProgressBar::Sections/Enabled/3
+0,0,0,top_bar/one,fit,Bonus Game Layout/BonusProgressBar::Sections/1
+0,0,0,top_bar/two,fit,Bonus Game Layout/BonusProgressBar::Sections/2
+0,0,0,top_bar/three,fit,Bonus Game Layout/BonusProgressBar::Sections/3
 
 # ---- top_character_static ----
 
@@ -198,14 +227,4 @@ Width,Height,Padding,Filename,Mode,Path
 0,0,0,top_character_static/top_character_states/top_character_third_state/CoinPile_3,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_03
 0,0,0,top_character_static/top_character_states/top_character_final_form_state/CoinPile_4,fit,MainSplash/Top Section/Character & Coins/Coins::Coins Levels/Level_04
 
-
-
-
-
-
-
-
-
 # ================================================================
-# NOT in this manifest — rendered animation sequences (not PSD exports):
-#   animations/** (18 folders, 344 frames) — see game_export.csv for the list
